@@ -34,4 +34,4 @@ Press `F5` in VS Code to launch the Extension Development Host.
 
 ## Scope
 
-ABP/AdBlock only.
+ABP-only. No AdGuard or uBlock Origin syntax.

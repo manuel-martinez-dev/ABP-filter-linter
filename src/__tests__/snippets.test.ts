@@ -67,3 +67,30 @@ describe('validateSnippetCall', () => {
     expect(results.some(r => r.severity === 'error' && r.message.includes('bad-mode'))).toBe(true);
   });
 });
+
+describe('empty string and quote-aware split fixes', () => {
+  it("parses '' as empty string arg", () => {
+    expect(parseSnippetArgs("ads ''")).toEqual(['ads', '']);
+  });
+
+  it('does not split on ; inside single-quoted arg', () => {
+    const calls = splitSnippetChain("abort-current-inline-script document.documentElement 'break;case'");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args[1]).toBe('break;case');
+  });
+
+  it('does split unquoted ; as snippet separator', () => {
+    const calls = splitSnippetChain("log hello; trace world");
+    expect(calls).toHaveLength(2);
+  });
+
+  it('accepts emptyObj as valid value for override-property-read', () => {
+    const call = { name: 'override-property-read', args: ['sssp', 'emptyObj'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('accepts numeric literal as valid value for override-property-read', () => {
+    const call = { name: 'override-property-read', args: ['MDCore.adblock', '0'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+});

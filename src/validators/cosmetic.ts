@@ -18,9 +18,14 @@ export async function validateCosmeticSelector(
   const results: LintResult[] = [];
   if (!selector.trim()) return results;
 
+  // Strip ABP cosmetic action suffix e.g. {remove:true;} or {display:none!important;}
+  // These are valid ABP extended syntax but not valid CSS — remove before validating
+  const stripped = selector.replace(/\s*\{[^}]*\}\s*$/, '').trim();
+  if (!stripped) return results;
+
   try {
     const p = await getParser();
-    p!(selector);
+    p!(stripped);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Invalid CSS selector';
     results.push({

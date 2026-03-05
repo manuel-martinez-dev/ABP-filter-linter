@@ -65,6 +65,12 @@ export function parseSnippetArgs(body: string): string[] {
     }
 
     if (ch === "'" && !inQuote) {
+      // Handle '' (empty quoted string) → push empty string immediately
+      if (body[i + 1] === "'") {
+        args.push('');
+        i += 2;
+        continue;
+      }
       inQuote = true;
       i++;
       continue;
@@ -97,10 +103,23 @@ export interface SnippetCall {
   nameOffset: number;
 }
 
-/** Split a snippet filter body (after #$#) by `;` into individual calls */
+/** Split a snippet filter body (after #$#) by `;` respecting single-quoted strings */
 export function splitSnippetChain(body: string): SnippetCall[] {
+  // Tokenise: split on ';' only when outside single quotes
+  const parts: string[] = [];
+  let current = '';
+  let inQuote = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\\' && i + 1 < body.length) { current += ch + body[i + 1]; i++; continue; }
+    if (ch === "'" && !inQuote) { inQuote = true; current += ch; continue; }
+    if (ch === "'" && inQuote) { inQuote = false; current += ch; continue; }
+    if (ch === ';' && !inQuote) { parts.push(current); current = ''; continue; }
+    current += ch;
+  }
+  if (current.length > 0) parts.push(current);
+
   const calls: SnippetCall[] = [];
-  const parts = body.split(';');
   let offset = 0;
 
   for (const part of parts) {
@@ -112,9 +131,7 @@ export function splitSnippetChain(body: string): SnippetCall[] {
     const argBody = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1);
     const args = argBody ? parseSnippetArgs(argBody) : [];
 
-    // Find actual offset of this name in the original body
     const nameOffset = body.indexOf(trimmed, offset);
-
     calls.push({ name, args, nameOffset });
     offset += part.length + 1;
   }
