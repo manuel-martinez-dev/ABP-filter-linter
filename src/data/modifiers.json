@@ -1,0 +1,20 @@
+{
+  "valid": [
+    "script", "image", "stylesheet", "subdocument",
+    "xmlhttprequest", "websocket", "popup", "font", "media",
+    "match-case", "document", "elemhide", "generichide",
+    "genericblock", "third-party", "csp", "domain", "rewrite",
+    "header", "addheader"
+  ],
+  "valueRequired": ["csp", "domain", "rewrite"],
+  "rewritePrefix": "abp-resource:",
+  "exceptionOnly": ["elemhide", "generichide", "genericblock"],
+  "contentTypes": [
+    "script", "image", "stylesheet", "subdocument",
+    "xmlhttprequest", "websocket", "popup", "font", "media"
+  ],
+  "incompatible": {
+    "document": ["script", "image", "stylesheet", "subdocument",
+                 "xmlhttprequest", "websocket", "popup", "font", "media"]
+  }
+}

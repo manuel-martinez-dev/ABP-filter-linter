@@ -1,0 +1,337 @@
+{
+  "snippets": {
+    "abort-current-inline-script": {
+      "since": "3.4.3",
+      "args": [
+        { "name": "api", "required": true },
+        { "name": "search", "required": false }
+      ]
+    },
+    "abort-on-property-read": {
+      "since": "3.4.1",
+      "args": [
+        { "name": "property", "required": true },
+        { "name": "setConfigurable", "required": false }
+      ]
+    },
+    "abort-on-property-write": {
+      "since": "3.4.3",
+      "args": [
+        { "name": "property", "required": true },
+        { "name": "setConfigurable", "required": false }
+      ]
+    },
+    "abort-on-iframe-property-read": {
+      "since": "3.10.1",
+      "args": [
+        { "name": "properties", "required": true, "variadic": true }
+      ]
+    },
+    "abort-on-iframe-property-write": {
+      "since": "3.10.1",
+      "args": [
+        { "name": "properties", "required": true, "variadic": true }
+      ]
+    },
+    "array-override": {
+      "since": "4.8",
+      "args": [
+        { "name": "method", "required": true, "enum": ["push", "includes", "forEach"] },
+        { "name": "needle", "required": true },
+        { "name": "returnValue", "required": false },
+        { "name": "path", "required": false },
+        { "name": "stack", "required": false }
+      ]
+    },
+    "blob-override": {
+      "since": "4.22.2",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "replacement", "required": false },
+        { "name": "needle", "required": false }
+      ]
+    },
+    "cookie-remover": {
+      "since": "3.11.2",
+      "args": [
+        { "name": "cookie", "required": true },
+        { "name": "autoRemoveCookie", "required": false }
+      ]
+    },
+    "event-override": {
+      "since": "4.22.2",
+      "args": [
+        { "name": "eventType", "required": true },
+        { "name": "mode", "required": true, "enum": ["trusted", "disable"] },
+        { "name": "needle", "required": false }
+      ]
+    },
+    "freeze-element": {
+      "since": "3.10",
+      "args": [
+        { "name": "selector", "required": true },
+        { "name": "options", "required": false },
+        { "name": "exceptions", "required": false }
+      ]
+    },
+    "json-override": {
+      "since": "3.11.2",
+      "args": [
+        { "name": "rawOverridePaths", "required": true },
+        { "name": "value", "required": true, "enum": ["undefined","false","true","null","''","noopFunc","trueFunc","falseFunc","throwFunc","noopCallbackFunc","noopthis","noopnull","nooparr","noopobj","noopstr"] },
+        { "name": "rawNeedlePaths", "required": false },
+        { "name": "filter", "required": false }
+      ]
+    },
+    "json-prune": {
+      "since": "3.9.0",
+      "args": [
+        { "name": "rawPrunePaths", "required": true },
+        { "name": "rawNeedlePaths", "required": false },
+        { "name": "rawNeedleStack", "required": false }
+      ]
+    },
+    "map-override": {
+      "since": "4.24.0",
+      "args": [
+        { "name": "method", "required": true, "enum": ["set", "get", "has"] },
+        { "name": "needle", "required": true },
+        { "name": "returnValue", "required": false },
+        { "name": "path", "required": false },
+        { "name": "stack", "required": false }
+      ]
+    },
+    "override-property-read": {
+      "since": "3.9.4",
+      "args": [
+        { "name": "property", "required": true },
+        { "name": "value", "required": true, "enum": ["undefined","false","true","null","''","noopFunc","trueFunc","falseFunc","throwFunc","noopCallbackFunc","noopthis","noopnull","nooparr","noopobj","noopstr"] },
+        { "name": "setConfigurable", "required": false }
+      ]
+    },
+    "prevent-listener": {
+      "since": "3.11.2",
+      "args": [
+        { "name": "type", "required": true },
+        { "name": "handler", "required": false },
+        { "name": "selector", "required": false }
+      ]
+    },
+    "prevent-element-src-loading": {
+      "since": "4.35.1",
+      "args": [
+        { "name": "tagName", "required": true, "enum": ["script", "img", "iframe", "link"] },
+        { "name": "search", "required": true }
+      ]
+    },
+    "replace-fetch-response": {
+      "since": "4.4",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "replacement", "required": false },
+        { "name": "needle", "required": false }
+      ]
+    },
+    "replace-outbound-value": {
+      "since": "4.26.0",
+      "args": [
+        { "name": "method", "required": true },
+        { "name": "search", "required": true },
+        { "name": "replacement", "required": false },
+        { "name": "decodeMethod", "required": false },
+        { "name": "path", "required": false },
+        { "name": "stack", "required": false }
+      ]
+    },
+    "replace-xhr-response": {
+      "since": "4.4",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "replacement", "required": false },
+        { "name": "needle", "required": false }
+      ]
+    },
+    "simulate-mouse-event": {
+      "since": "3.17",
+      "args": [
+        { "name": "selectors", "required": true, "variadic": true, "max": 7 }
+      ]
+    },
+    "skip-video": {
+      "since": "3.21",
+      "args": [
+        { "name": "playerSelector", "required": true },
+        { "name": "xpathCondition", "required": true }
+      ]
+    },
+    "strip-fetch-query-parameter": {
+      "since": "3.5.1",
+      "args": [
+        { "name": "name", "required": true },
+        { "name": "urlPattern", "required": false }
+      ]
+    },
+    "hide-if-canvas-contains": {
+      "since": "4.7",
+      "category": "conditional-hiding",
+      "noRace": true,
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": false }
+      ]
+    },
+    "hide-if-contains": {
+      "since": "3.3",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "hide-if-contains-and-matches-style": {
+      "since": "3.3.2",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false },
+        { "name": "style", "required": false },
+        { "name": "searchStyle", "required": false },
+        { "name": "waitUntil", "required": false },
+        { "name": "windowWidthMin", "required": false },
+        { "name": "windowWidthMax", "required": false }
+      ]
+    },
+    "hide-if-contains-image": {
+      "since": "3.4.2",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "hide-if-contains-similar-text": {
+      "since": "3.14.2",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "hide-if-contains-visible-text": {
+      "since": "3.6",
+      "category": "conditional-hiding",
+      "noSvg": true,
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "hide-if-has-and-matches-style": {
+      "since": "3.4.2",
+      "category": "conditional-hiding",
+      "noShadowInSearch": true,
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false },
+        { "name": "style", "required": false },
+        { "name": "searchStyle", "required": false },
+        { "name": "waitUntil", "required": false },
+        { "name": "windowWidthMin", "required": false },
+        { "name": "windowWidthMax", "required": false }
+      ]
+    },
+    "hide-if-labelled-by": {
+      "since": "3.9",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "hide-if-matches-computed-xpath": {
+      "since": "3.18.1",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "query", "required": true },
+        { "name": "searchQuery", "required": true },
+        { "name": "searchRegex", "required": true },
+        { "name": "waitUntil", "required": false }
+      ]
+    },
+    "hide-if-matches-xpath": {
+      "since": "3.9.0",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "query", "required": true },
+        { "name": "scopeQuery", "required": false },
+        { "name": "waitUntil", "required": false }
+      ]
+    },
+    "hide-if-matches-xpath3": {
+      "since": "3.19",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "query", "required": true },
+        { "name": "scopeQuery", "required": false }
+      ]
+    },
+    "hide-if-shadow-contains": {
+      "since": "3.3",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true }
+      ]
+    },
+    "hide-if-svg-contains": {
+      "since": "4.26.0",
+      "category": "conditional-hiding",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "selector", "required": true },
+        { "name": "searchSelector", "required": false }
+      ]
+    },
+    "debug": {
+      "since": "3.8",
+      "category": "debugging",
+      "args": []
+    },
+    "log": {
+      "since": "3.3",
+      "category": "debugging",
+      "args": [
+        { "name": "messages", "required": false, "variadic": true }
+      ]
+    },
+    "trace": {
+      "since": "3.3",
+      "category": "debugging",
+      "args": [
+        { "name": "messages", "required": false, "variadic": true }
+      ]
+    },
+    "profile": {
+      "since": "4.8",
+      "category": "debugging",
+      "args": []
+    },
+    "race": {
+      "since": "3.14.1",
+      "category": "performance",
+      "args": []
+    }
+  },
+  "deprecated": {
+    "simulate-event-poc": "Replaced by simulate-mouse-event",
+    "hide-if-classifies": "Removed in @eyeo/snippets v2.0.0 — requires service worker backend",
+    "hide-if-graph-matches": "Removed in @eyeo/snippets v0.9.0 — ML snippet requiring external dependency"
+  }
+}
