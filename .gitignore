@@ -1,3 +1,6 @@
-node_modules/\nout/\ndist/\n*.vsix
+node_modules/
 out/
+dist/
+*.vsix
 .vscode/
+abp-vscode-linter-project.md

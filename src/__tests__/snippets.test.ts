@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, parseSnippetArgs } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, parseSnippetArgs } from '../validators/snippets';
 
 describe('parseSnippetArgs', () => {
   it('splits simple args', () => {
@@ -92,5 +92,111 @@ describe('empty string and quote-aware split fixes', () => {
   it('accepts numeric literal as valid value for override-property-read', () => {
     const call = { name: 'override-property-read', args: ['MDCore.adblock', '0'], nameOffset: 0 };
     expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+});
+
+describe('json-override value enum', () => {
+  it('accepts valid keyword value', () => {
+    const call = { name: 'json-override', args: ['data.ads', 'undefined'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('accepts integer value (allowsNumericLiteral)', () => {
+    const call = { name: 'json-override', args: ['data.ads', '42'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('errors on arbitrary string value', () => {
+    const call = { name: 'json-override', args: ['data.ads', 'emptyStr'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('emptyStr'))).toBe(true);
+  });
+});
+
+describe('max arg count', () => {
+  it('warns when simulate-mouse-event exceeds 7 selectors', () => {
+    const call = {
+      name: 'simulate-mouse-event',
+      args: ['sel1', 'sel2', 'sel3', 'sel4', 'sel5', 'sel6', 'sel7', 'sel8'],
+      nameOffset: 0,
+    };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('7'))).toBe(true);
+  });
+
+  it('passes with exactly 7 selectors', () => {
+    const call = {
+      name: 'simulate-mouse-event',
+      args: ['sel1', 'sel2', 'sel3', 'sel4', 'sel5', 'sel6', 'sel7'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+});
+
+describe('demarcator validation', () => {
+  it('errors on ^^svg^^ in selector of hide-if-contains-visible-text', () => {
+    const call = {
+      name: 'hide-if-contains-visible-text',
+      args: ['ad-text', '.parent ^^svg^^ .child'],
+      nameOffset: 0,
+    };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('^^svg^^'))).toBe(true);
+  });
+
+  it('errors on ^^sh^^ in search of hide-if-has-and-matches-style', () => {
+    const call = {
+      name: 'hide-if-has-and-matches-style',
+      args: ['.item ^^sh^^ .ad', '.container'],
+      nameOffset: 0,
+    };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('^^sh^^'))).toBe(true);
+  });
+
+  it('allows ^^sh^^ in selector of hide-if-contains (supported)', () => {
+    const call = {
+      name: 'hide-if-contains',
+      args: ['ad-text', '.parent ^^sh^^ .child'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+});
+
+describe('validateSnippetChain — race block', () => {
+  it('passes a valid race block', () => {
+    const calls = splitSnippetChain('race start; hide-if-contains foo .bar; race stop');
+    expect(validateSnippetChain(calls, 0)).toHaveLength(0);
+  });
+
+  it('errors on race start without matching race stop', () => {
+    const calls = splitSnippetChain('race start; hide-if-contains foo .bar');
+    const results = validateSnippetChain(calls, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('race start'))).toBe(true);
+  });
+
+  it('errors on race stop without matching race start', () => {
+    const calls = splitSnippetChain('hide-if-contains foo .bar; race stop');
+    const results = validateSnippetChain(calls, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('race stop'))).toBe(true);
+  });
+
+  it('warns on unsupported behavioral snippet inside race', () => {
+    const calls = splitSnippetChain('race start; abort-on-property-read adHandler; race stop');
+    const results = validateSnippetChain(calls, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('abort-on-property-read'))).toBe(true);
+  });
+
+  it('warns on hide-if-canvas-contains inside race (noRace)', () => {
+    const calls = splitSnippetChain('race start; hide-if-canvas-contains foo; race stop');
+    const results = validateSnippetChain(calls, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('hide-if-canvas-contains'))).toBe(true);
+  });
+
+  it('allows skip-video inside race', () => {
+    const calls = splitSnippetChain('race start; skip-video .player //condition; race stop');
+    expect(validateSnippetChain(calls, 0)).toHaveLength(0);
   });
 });

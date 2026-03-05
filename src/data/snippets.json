@@ -166,7 +166,19 @@
         },
         {
           "name": "value",
-          "required": true
+          "required": true,
+          "enum": [
+            "undefined",
+            "false",
+            "true",
+            "null",
+            "''",
+            "noopFunc",
+            "trueFunc",
+            "emptyArray",
+            "emptyObj"
+          ],
+          "allowsNumericLiteral": true
         },
         {
           "name": "rawNeedlePaths",

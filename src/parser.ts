@@ -41,7 +41,8 @@ export function parseLine(raw: string, lineIndex: number): ParsedLine {
 
   // Exception rules (@@)
   if (trimmed.startsWith('@@')) {
-    return { type: 'exception', domains: [], body: trimmed.slice(2), separator: '@@', raw, lineIndex, bodyOffset: 2 };
+    const bodyOffset = raw.indexOf('@@') + 2;
+    return { type: 'exception', domains: [], body: trimmed.slice(2), separator: '@@', raw, lineIndex, bodyOffset };
   }
 
   // Cosmetic-style separators

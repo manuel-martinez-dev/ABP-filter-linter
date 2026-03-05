@@ -29,7 +29,9 @@
   "valueRequired": [
     "csp",
     "domain",
-    "rewrite"
+    "rewrite",
+    "header",
+    "addheader"
   ],
   "rewritePrefix": "abp-resource:",
   "exceptionOnly": [
@@ -48,5 +50,7 @@
     "font",
     "media"
   ],
-  "incompatible": {}
+  "incompatible": {
+    "document": ["script", "image", "stylesheet", "subdocument", "xmlhttprequest", "websocket", "popup", "font", "media"]
+  }
 }

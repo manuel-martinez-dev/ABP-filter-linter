@@ -7,6 +7,7 @@ interface ArgSchema {
   variadic?: boolean;
   max?: number;
   enum?: string[];
+  allowsNumericLiteral?: boolean;
 }
 
 interface SnippetSchema {
@@ -20,6 +21,17 @@ interface SnippetSchema {
 
 const SNIPPETS = snippetData.snippets as Record<string, SnippetSchema>;
 const DEPRECATED = snippetData.deprecated as Record<string, string>;
+
+/** Snippets where specific arg positions forbid certain shadow DOM demarcators */
+const FORBIDDEN_DEMARCATORS: Record<string, Array<{ argIndex: number; tokens: string[] }>> = {
+  'hide-if-contains-visible-text': [
+    { argIndex: 1, tokens: ['^^svg^^'] }, // selector
+    { argIndex: 2, tokens: ['^^svg^^'] }, // searchSelector
+  ],
+  'hide-if-has-and-matches-style': [
+    { argIndex: 0, tokens: ['^^sh^^', '^^svg^^'] }, // search
+  ],
+};
 
 /** Levenshtein distance for typo suggestions */
 function levenshtein(a: string, b: string): number {
@@ -102,16 +114,19 @@ export interface SnippetCall {
 
 /** Split a snippet filter body (after #$#) by `;` respecting single-quoted strings */
 export function splitSnippetChain(body: string): SnippetCall[] {
-  // Tokenise: split on ';' only when outside single quotes
   const parts: string[] = [];
   let current = '';
   let inQuote = false;
+  let inRegex = false;
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
     if (ch === '\\' && i + 1 < body.length) { current += ch + body[i + 1]; i++; continue; }
-    if (ch === "'" && !inQuote) { inQuote = true; current += ch; continue; }
+    if (ch === "'" && !inQuote && !inRegex) { inQuote = true; current += ch; continue; }
     if (ch === "'" && inQuote) { inQuote = false; current += ch; continue; }
-    if (ch === ';' && !inQuote) { parts.push(current); current = ''; continue; }
+    const prevCh = i > 0 ? body[i - 1] : ' ';
+    if (ch === '/' && !inQuote && !inRegex && (prevCh === ' ' || prevCh === ';')) { inRegex = true; current += ch; continue; }
+    if (ch === '/' && inRegex) { inRegex = false; current += ch; continue; }
+    if (ch === ';' && !inQuote && !inRegex) { parts.push(current); current = ''; continue; }
     current += ch;
   }
   if (current.length > 0) parts.push(current);
@@ -183,21 +198,133 @@ export function validateSnippetCall(
     });
   }
 
-  // Enum validation — track running offset so squiggle lands on the right arg
+  // Variadic max check
+  const variadicArg = schema.args.find(a => a.variadic);
+  if (variadicArg?.max !== undefined && args.length > variadicArg.max) {
+    results.push({
+      message: `"${name}" accepts at most ${variadicArg.max} argument(s) but got ${args.length}`,
+      severity: 'warning',
+      startCol: absStart,
+      endCol: absEnd,
+    });
+  }
+
+  // Arg-level validation: enum + demarcators
+  const demarcatorRules = FORBIDDEN_DEMARCATORS[name];
   let argSearchOffset = bodyOffset + nameOffset + name.length + 1;
+
   for (let i = 0; i < schema.args.length; i++) {
     const argSchema = schema.args[i];
     const argVal = args[i];
     if (argVal === undefined) break;
+
+    // Enum validation
     if (argSchema.enum && !argSchema.enum.includes(argVal)) {
-      results.push({
-        message: `Invalid value "${argVal}" for "${argSchema.name}". Expected one of: ${argSchema.enum.join(', ')}`,
-        severity: 'error',
-        startCol: argSearchOffset,
-        endCol: argSearchOffset + argVal.length,
-      });
+      const isNumericLiteral = argSchema.allowsNumericLiteral === true && /^\d+$/.test(argVal);
+      if (!isNumericLiteral) {
+        results.push({
+          message: `Invalid value "${argVal}" for "${argSchema.name}". Expected one of: ${argSchema.enum.join(', ')}`,
+          severity: 'error',
+          startCol: argSearchOffset,
+          endCol: argSearchOffset + argVal.length,
+        });
+      }
     }
+
+    // Demarcator validation
+    if (demarcatorRules) {
+      for (const rule of demarcatorRules) {
+        if (rule.argIndex === i) {
+          for (const token of rule.tokens) {
+            if (argVal.includes(token)) {
+              const tokenPos = argVal.indexOf(token);
+              results.push({
+                message: `"${token}" is not supported in the "${argSchema.name}" argument of "${name}"`,
+                severity: 'error',
+                startCol: argSearchOffset + tokenPos,
+                endCol: argSearchOffset + tokenPos + token.length,
+              });
+            }
+          }
+        }
+      }
+    }
+
     argSearchOffset += argVal.length + 1; // +1 for separating space
+  }
+
+  return results;
+}
+
+/** Validate race block structure across a full snippet chain */
+export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+
+  let raceDepth = 0;
+  let raceStartCall: SnippetCall | null = null;
+  let hasAnyRace = false;
+
+  // First pass: check race start/stop balance
+  for (const call of calls) {
+    if (call.name !== 'race') continue;
+    hasAnyRace = true;
+    if (call.args[0] === 'start') {
+      raceDepth++;
+      if (raceDepth === 1) raceStartCall = call;
+    } else if (call.args[0] === 'stop') {
+      if (raceDepth === 0) {
+        const abs = bodyOffset + call.nameOffset;
+        results.push({
+          message: '"race stop" without a matching "race start"',
+          severity: 'error',
+          startCol: abs,
+          endCol: abs + 'race'.length,
+        });
+      } else {
+        raceDepth--;
+      }
+    }
+  }
+
+  if (raceDepth > 0 && raceStartCall) {
+    const abs = bodyOffset + raceStartCall.nameOffset;
+    results.push({
+      message: '"race start" without a matching "race stop"',
+      severity: 'error',
+      startCol: abs,
+      endCol: abs + 'race'.length,
+    });
+  }
+
+  // Second pass: check snippets inside race blocks
+  if (hasAnyRace) {
+    let inRace = false;
+    for (const call of calls) {
+      if (call.name === 'race') {
+        if (call.args[0] === 'start') inRace = true;
+        else if (call.args[0] === 'stop') inRace = false;
+        continue;
+      }
+      if (!inRace) continue;
+
+      const schema = SNIPPETS[call.name];
+      if (!schema) continue; // already flagged as unknown by validateSnippetCall
+
+      const supported =
+        (schema.category === 'conditional-hiding' && !schema.noRace) ||
+        call.name === 'skip-video' ||
+        schema.category === 'debugging';
+
+      if (!supported) {
+        const abs = bodyOffset + call.nameOffset;
+        results.push({
+          message: `"${call.name}" is not supported inside a race block`,
+          severity: 'warning',
+          startCol: abs,
+          endCol: abs + call.name.length,
+        });
+      }
+    }
   }
 
   return results;

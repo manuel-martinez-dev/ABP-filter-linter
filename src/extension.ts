@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain } from './validators/snippets';
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
@@ -32,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (parsed.type === 'snippet') {
         const calls = splitSnippetChain(parsed.body);
+        results.push(...validateSnippetChain(calls, parsed.bodyOffset));
         for (const call of calls) {
           results.push(...validateSnippetCall(call, parsed.bodyOffset));
         }
@@ -68,7 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Lint all already-open .txt files
-  vscode.workspace.textDocuments.forEach(lint);
+  vscode.workspace.textDocuments.forEach(doc => lint(doc).catch(console.error));
 }
 
 export function deactivate() {}
