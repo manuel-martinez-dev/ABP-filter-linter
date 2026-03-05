@@ -1,20 +1,52 @@
 {
   "valid": [
-    "script", "image", "stylesheet", "subdocument",
-    "xmlhttprequest", "websocket", "popup", "font", "media",
-    "match-case", "document", "elemhide", "generichide",
-    "genericblock", "third-party", "csp", "domain", "rewrite",
-    "header", "addheader"
+    "addheader",
+    "collapse",
+    "csp",
+    "document",
+    "domain",
+    "elemhide",
+    "font",
+    "genericblock",
+    "generichide",
+    "header",
+    "image",
+    "match-case",
+    "media",
+    "object",
+    "other",
+    "ping",
+    "popup",
+    "rewrite",
+    "script",
+    "sitekey",
+    "stylesheet",
+    "subdocument",
+    "third-party",
+    "websocket",
+    "xmlhttprequest"
   ],
-  "valueRequired": ["csp", "domain", "rewrite"],
+  "valueRequired": [
+    "csp",
+    "domain",
+    "rewrite"
+  ],
   "rewritePrefix": "abp-resource:",
-  "exceptionOnly": ["elemhide", "generichide", "genericblock"],
-  "contentTypes": [
-    "script", "image", "stylesheet", "subdocument",
-    "xmlhttprequest", "websocket", "popup", "font", "media"
+  "exceptionOnly": [
+    "elemhide",
+    "generichide",
+    "genericblock"
   ],
-  "incompatible": {
-    "document": ["script", "image", "stylesheet", "subdocument",
-                 "xmlhttprequest", "websocket", "popup", "font", "media"]
-  }
+  "contentTypes": [
+    "script",
+    "image",
+    "stylesheet",
+    "subdocument",
+    "xmlhttprequest",
+    "websocket",
+    "popup",
+    "font",
+    "media"
+  ],
+  "incompatible": {}
 }

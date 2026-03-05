@@ -65,12 +65,6 @@ export function parseSnippetArgs(body: string): string[] {
     }
 
     if (ch === "'" && !inQuote) {
-      // Handle '' (empty quoted string) → push empty string immediately
-      if (body[i + 1] === "'") {
-        args.push('');
-        i += 2;
-        continue;
-      }
       inQuote = true;
       i++;
       continue;
@@ -78,6 +72,9 @@ export function parseSnippetArgs(body: string): string[] {
 
     if (ch === "'" && inQuote) {
       inQuote = false;
+      // Always flush on close-quote (handles '' empty string as a valid arg)
+      args.push(current);
+      current = '';
       i++;
       continue;
     }

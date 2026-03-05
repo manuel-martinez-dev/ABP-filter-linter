@@ -69,7 +69,7 @@ describe('validateSnippetCall', () => {
 });
 
 describe('empty string and quote-aware split fixes', () => {
-  it("parses '' as empty string arg", () => {
+  it("parses '' as an empty string argument", () => {
     expect(parseSnippetArgs("ads ''")).toEqual(['ads', '']);
   });
 

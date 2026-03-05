@@ -1,1 +1,3 @@
 node_modules/\nout/\ndist/\n*.vsix
+out/
+.vscode/
