@@ -14,7 +14,7 @@ VS Code extension that validates Adblock Plus filter syntax in `.txt` files.
 ## Supported Filter Types
 
 | Syntax | Type |
-|--------|------|
+| -------- | ------ |
 | `#$#` | Snippet filters |
 | `##` | Element hiding |
 | `#?#` | Extended selectors |
