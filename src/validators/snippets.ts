@@ -65,10 +65,29 @@ export function parseSnippetArgs(body: string): string[] {
   const args: string[] = [];
   let current = '';
   let inQuote = false;
+  let inRegex = false;
   let i = 0;
 
   while (i < body.length) {
     const ch = body[i];
+
+    // Inside regex: preserve escapes as-is, only exit on closing /
+    if (inRegex) {
+      if (ch === '\\' && i + 1 < body.length) {
+        current += ch + body[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '/') {
+        inRegex = false;
+        current += ch;
+        i++;
+        continue;
+      }
+      current += ch;
+      i++;
+      continue;
+    }
 
     if (ch === '\\' && i + 1 < body.length) {
       current += body[i + 1];
@@ -93,6 +112,14 @@ export function parseSnippetArgs(body: string): string[] {
 
     if (ch === ' ' && !inQuote) {
       if (current.length > 0) { args.push(current); current = ''; }
+      i++;
+      continue;
+    }
+
+    // Detect regex start: / at the beginning of a new token
+    if (ch === '/' && !inQuote && current.length === 0) {
+      inRegex = true;
+      current += ch;
       i++;
       continue;
     }

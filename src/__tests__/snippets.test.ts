@@ -13,6 +13,14 @@ describe('parseSnippetArgs', () => {
   it('handles escaped quotes', () => {
     expect(parseSnippetArgs("it\\'s")).toEqual(["it's"]);
   });
+
+  it('treats unquoted /regex with spaces/ as a single arg', () => {
+    expect(parseSnippetArgs('Math /break;case \\$/')).toEqual(['Math', '/break;case \\$/']);
+  });
+
+  it('treats regex with multiple spaces as a single arg', () => {
+    expect(parseSnippetArgs('document.createElement /ru-n4p|ua-n4p|загрузка.../')).toEqual(['document.createElement', '/ru-n4p|ua-n4p|загрузка.../']);
+  });
 });
 
 describe('splitSnippetChain', () => {
