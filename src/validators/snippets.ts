@@ -209,6 +209,16 @@ export function validateSnippetCall(
     });
   }
 
+  // Too-many-args check for non-variadic snippets
+  if (!variadicArg && args.length > schema.args.length) {
+    results.push({
+      message: `"${name}" accepts at most ${schema.args.length} argument(s) but got ${args.length}`,
+      severity: 'warning',
+      startCol: absStart,
+      endCol: absEnd,
+    });
+  }
+
   // Arg-level validation: enum + demarcators
   const demarcatorRules = FORBIDDEN_DEMARCATORS[name];
   let argSearchOffset = bodyOffset + nameOffset + name.length + 1;

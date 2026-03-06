@@ -165,6 +165,79 @@ describe('demarcator validation', () => {
   });
 });
 
+describe('too-many-args validation', () => {
+  it('warns when non-variadic snippet gets extra args', () => {
+    // abort-current-inline-script has 2 args; passing 3 should warn
+    const call = {
+      name: 'abort-current-inline-script',
+      args: ['EventTarget.prototype.addEventListener', 'delete', 'window'],
+      nameOffset: 0,
+    };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('2'))).toBe(true);
+  });
+
+  it('does not warn when variadic snippet gets extra args (skip-video optional params)', () => {
+    const call = {
+      name: 'skip-video',
+      args: ['video.player', './/div[@class="ad"]', '-run-once:true', '-skip-to:10'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not warn when variadic snippet gets extra style params (hide-if-contains-visible-text)', () => {
+    const call = {
+      name: 'hide-if-contains-visible-text',
+      args: ['/Ad/', '.item', '.item .label', 'color:rgb(255,255,255)', '-disable-font-check:true'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not warn when variadic snippet gets optional param (hide-if-svg-contains)', () => {
+    const call = {
+      name: 'hide-if-svg-contains',
+      args: ['/Ad/', '.wrapper', '.wrapper svg', '-position-threshold:500'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not warn when freeze-element gets multiple exceptions (variadic)', () => {
+    const call = {
+      name: 'freeze-element',
+      args: ['.container', '', '.article', '.navigation', '/keep-me/'],
+      nameOffset: 0,
+    };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+});
+
+describe('race direction validation', () => {
+  it('passes race start', () => {
+    expect(validateSnippetCall({ name: 'race', args: ['start'], nameOffset: 0 }, 0)).toHaveLength(0);
+  });
+
+  it('passes race stop', () => {
+    expect(validateSnippetCall({ name: 'race', args: ['stop'], nameOffset: 0 }, 0)).toHaveLength(0);
+  });
+
+  it('passes race start with winners count', () => {
+    expect(validateSnippetCall({ name: 'race', args: ['start', '2'], nameOffset: 0 }, 0)).toHaveLength(0);
+  });
+
+  it('errors on invalid race direction', () => {
+    const results = validateSnippetCall({ name: 'race', args: ['invalid'], nameOffset: 0 }, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('invalid'))).toBe(true);
+  });
+
+  it('warns on race with no args (missing required direction)', () => {
+    const results = validateSnippetCall({ name: 'race', args: [], nameOffset: 0 }, 0);
+    expect(results.some(r => r.severity === 'warning')).toBe(true);
+  });
+});
+
 describe('validateSnippetChain — race block', () => {
   it('passes a valid race block', () => {
     const calls = splitSnippetChain('race start; hide-if-contains foo .bar; race stop');

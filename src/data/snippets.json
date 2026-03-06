@@ -153,7 +153,8 @@
         },
         {
           "name": "exceptions",
-          "required": false
+          "required": false,
+          "variadic": true
         }
       ]
     },
@@ -374,6 +375,11 @@
         {
           "name": "xpathCondition",
           "required": true
+        },
+        {
+          "name": "optionalParameters",
+          "required": false,
+          "variadic": true
         }
       ]
     },
@@ -513,6 +519,11 @@
         {
           "name": "searchSelector",
           "required": false
+        },
+        {
+          "name": "optionalParameters",
+          "required": false,
+          "variadic": true
         }
       ]
     },
@@ -656,6 +667,11 @@
         {
           "name": "searchSelector",
           "required": false
+        },
+        {
+          "name": "optionalParameters",
+          "required": false,
+          "variadic": true
         }
       ]
     },
@@ -694,7 +710,17 @@
     "race": {
       "since": "3.14.1",
       "category": "performance",
-      "args": []
+      "args": [
+        {
+          "name": "direction",
+          "required": true,
+          "enum": ["start", "stop"]
+        },
+        {
+          "name": "winners",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
