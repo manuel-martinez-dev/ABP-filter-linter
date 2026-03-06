@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(collection);
 
   const lint = async (doc: vscode.TextDocument) => {
-    if (doc.languageId !== 'plaintext') return;
+    if (doc.languageId !== 'plaintext' || !doc.uri.fsPath.endsWith('.txt')) return;
     const lines = doc.getText().split('\n');
 
     if (!isAbpDocument(lines)) {
@@ -65,11 +65,20 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(lint),
     vscode.workspace.onDidChangeTextDocument(e => lint(e.document)),
-    vscode.workspace.onDidCloseTextDocument(doc => collection.delete(doc.uri))
+    vscode.workspace.onDidDeleteFiles(e => {
+      for (const file of e.files) collection.delete(file);
+    })
   );
 
-  // Lint all already-open .txt files
+  // Lint all already-open editor tabs
   vscode.workspace.textDocuments.forEach(doc => lint(doc).catch(console.error));
+
+  // Lint all .txt files in the workspace (not just open tabs)
+  vscode.workspace.findFiles('**/*.txt', '**/node_modules/**').then(uris => {
+    for (const uri of uris) {
+      vscode.workspace.openTextDocument(uri).then(doc => lint(doc).catch(console.error));
+    }
+  });
 }
 
 export function deactivate() {}
