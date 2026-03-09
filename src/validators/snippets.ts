@@ -213,6 +213,17 @@ export function validateSnippetCall(
   }
 
   const schema = SNIPPETS[name];
+
+  // Debugging snippets should not appear in the live list
+  if (schema.category === 'debugging') {
+    results.push({
+      message: `"${name}" is a debugging snippet and should not be used in the live list`,
+      severity: 'warning',
+      startCol: absStart,
+      endCol: absEnd,
+    });
+  }
+
   const requiredArgs = schema.args.filter(a => a.required);
 
   // Missing required args

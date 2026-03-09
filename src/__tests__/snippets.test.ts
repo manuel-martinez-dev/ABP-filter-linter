@@ -63,6 +63,13 @@ describe('validateSnippetCall', () => {
     expect(results[0].severity).toBe('warning');
   });
 
+  it('warns on debugging snippets (log, trace, debug, profile)', () => {
+    for (const name of ['log', 'trace', 'debug', 'profile']) {
+      const results = validateSnippetCall({ name, args: [], nameOffset: 0 }, 0);
+      expect(results.some(r => r.severity === 'warning' && r.message.includes('live list'))).toBe(true);
+    }
+  });
+
   it('warns on missing required arg', () => {
     const call = { name: 'abort-on-property-read', args: [], nameOffset: 0 };
     const results = validateSnippetCall(call, 0);
