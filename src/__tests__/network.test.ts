@@ -63,6 +63,11 @@ describe('validateNetworkRule', () => {
     expect(results[0].message).toContain('addheader');
   });
 
+  it('errors on $document on a blocking rule', () => {
+    const results = validateNetworkRule('||ads.example.com^$document', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('document'))).toBe(true);
+  });
+
   it('errors on $document combined with content-type modifier', () => {
     const results = validateNetworkRule('||ads.example.com^$document,script', false, 0);
     expect(results.some(r => r.message.includes('document') && r.message.includes('script'))).toBe(true);
@@ -71,6 +76,14 @@ describe('validateNetworkRule', () => {
   it('errors on $document combined with image', () => {
     const results = validateNetworkRule('||ads.example.com^$document,image', false, 0);
     expect(results.some(r => r.message.includes('document') && r.message.includes('image'))).toBe(true);
+  });
+
+  it('allows $document combined with content-type modifier on exception rules', () => {
+    expect(validateNetworkRule('@@||example.com^$document,script', true, 0)).toHaveLength(0);
+  });
+
+  it('allows $document combined with image on exception rules', () => {
+    expect(validateNetworkRule('@@||example.com^$document,image', true, 0)).toHaveLength(0);
   });
 
   it('allows inverted modifier ~third-party', () => {

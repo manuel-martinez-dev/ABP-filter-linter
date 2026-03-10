@@ -35,6 +35,7 @@
   ],
   "rewritePrefix": "abp-resource:",
   "exceptionOnly": [
+    "document",
     "elemhide",
     "generichide",
     "genericblock"

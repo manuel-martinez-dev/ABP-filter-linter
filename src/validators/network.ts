@@ -75,6 +75,8 @@ export function validateNetworkRule(
   // Incompatibility checks
   for (const [mod, incompatibles] of Object.entries(INCOMPATIBLE)) {
     if (!modifierNames.includes(mod)) continue;
+    // document can be combined with any modifier on exception (@@) rules
+    if (isException && mod === 'document') continue;
     for (const inc of incompatibles) {
       if (modifierNames.includes(inc)) {
         results.push({
