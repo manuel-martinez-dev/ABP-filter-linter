@@ -21,6 +21,9 @@ export function validateNetworkRule(
   const modifierNames: string[] = [];
   let modRunningOffset = 0;
 
+  /** Tokens that are unknown but look like domain names — checked after the loop */
+  const domainLikeUnknowns: Array<{ key: string; start: number; end: number }> = []; // key used for fallback "Unknown modifier" message
+
   for (const mod of modifiers) {
     const trimmedMod = mod.trim();
     const negated = trimmedMod.startsWith('~');
@@ -31,12 +34,16 @@ export function validateNetworkRule(
     modRunningOffset += mod.length + 1; // +1 for the comma
 
     if (!VALID.has(key)) {
-      results.push({
-        message: `Unknown modifier "${key}"`,
-        severity: 'error',
-        startCol: modStart,
-        endCol: modEnd,
-      });
+      if (/^~?[\w-]+(\.[\w-]+)+$/.test(trimmedMod)) {
+        domainLikeUnknowns.push({ key: trimmedMod, start: modStart, end: modEnd });
+      } else {
+        results.push({
+          message: `Unknown modifier "${key}"`,
+          severity: 'error',
+          startCol: modStart,
+          endCol: modEnd,
+        });
+      }
       continue;
     }
 
@@ -70,6 +77,29 @@ export function validateNetworkRule(
     }
 
     modifierNames.push(key);
+  }
+
+  // domain= comma-separator check
+  if (domainLikeUnknowns.length > 0) {
+    if (modifierNames.includes('domain')) {
+      for (const { start, end } of domainLikeUnknowns) {
+        results.push({
+          message: `Use "|" to separate multiple domains in "domain=" (e.g. domain=foo.com|bar.com)`,
+          severity: 'warning',
+          startCol: start,
+          endCol: end,
+        });
+      }
+    } else {
+      for (const { key, start, end } of domainLikeUnknowns) {
+        results.push({
+          message: `Unknown modifier "${key}"`,
+          severity: 'error',
+          startCol: start,
+          endCol: end,
+        });
+      }
+    }
   }
 
   // Incompatibility checks

@@ -86,6 +86,20 @@ describe('validateNetworkRule', () => {
     expect(validateNetworkRule('@@||example.com^$document,image', true, 0)).toHaveLength(0);
   });
 
+  it('warns on comma-separated domains in domain= value', () => {
+    const results = validateNetworkRule('||ads.example.com^$domain=foo.com,bar.com', false, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('|'))).toBe(true);
+  });
+
+  it('does not warn on valid domain= with pipe separator', () => {
+    expect(validateNetworkRule('||ads.example.com^$domain=foo.com|bar.com', false, 0)).toHaveLength(0);
+  });
+
+  it('does not misidentify domain=foo.com,script as domain separator issue', () => {
+    const results = validateNetworkRule('||ads.example.com^$domain=foo.com,script', false, 0);
+    expect(results.every(r => !r.message.includes('|'))).toBe(true);
+  });
+
   it('allows inverted modifier ~third-party', () => {
     expect(validateNetworkRule('||ads.example.com^$~third-party', false, 0)).toHaveLength(0);
   });
