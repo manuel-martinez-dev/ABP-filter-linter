@@ -11,7 +11,34 @@ const COLLECTION_NAME = 'abp-filter-linter';
 
 export function activate(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection(COLLECTION_NAME);
-  context.subscriptions.push(collection);
+
+  const errorLineDecoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: 'rgba(255, 0, 0, 0.08)',
+    overviewRulerColor: 'rgba(255, 0, 0, 0.6)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right,
+  });
+
+  const warningLineDecoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: 'rgba(255, 200, 0, 0.07)',
+    overviewRulerColor: 'rgba(255, 200, 0, 0.6)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right,
+  });
+
+  context.subscriptions.push(collection, errorLineDecoration, warningLineDecoration);
+
+  function applyDecorations(editor: vscode.TextEditor) {
+    const diags = collection.get(editor.document.uri) ?? [];
+    const errorRanges = diags
+      .filter(d => d.severity === vscode.DiagnosticSeverity.Error)
+      .map(d => d.range);
+    const warningRanges = diags
+      .filter(d => d.severity === vscode.DiagnosticSeverity.Warning)
+      .map(d => d.range);
+    editor.setDecorations(errorLineDecoration, errorRanges);
+    editor.setDecorations(warningLineDecoration, warningRanges);
+  }
 
   const lint = async (doc: vscode.TextDocument) => {
     if (doc.languageId !== 'plaintext' || !doc.uri.fsPath.endsWith('.txt')) return;
@@ -19,6 +46,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (!isAbpDocument(lines)) {
       collection.delete(doc.uri);
+      for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document.uri.toString() === doc.uri.toString()) {
+          editor.setDecorations(errorLineDecoration, []);
+          editor.setDecorations(warningLineDecoration, []);
+        }
+      }
       return;
     }
 
@@ -59,21 +92,27 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     collection.set(doc.uri, diagnostics);
+
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.toString() === doc.uri.toString()) {
+        applyDecorations(editor);
+      }
+    }
   };
 
-  // Run on open and change
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(lint),
     vscode.workspace.onDidChangeTextDocument(e => lint(e.document)),
     vscode.workspace.onDidDeleteFiles(e => {
       for (const file of e.files) collection.delete(file);
-    })
+    }),
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+      if (editor) applyDecorations(editor);
+    }),
   );
 
-  // Lint all already-open editor tabs
   vscode.workspace.textDocuments.forEach(doc => lint(doc).catch(console.error));
 
-  // Lint all .txt files in the workspace (not just open tabs)
   vscode.workspace.findFiles('**/*.txt', '**/node_modules/**').then(uris => {
     for (const uri of uris) {
       vscode.workspace.openTextDocument(uri).then(doc => lint(doc).catch(console.error));
