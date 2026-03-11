@@ -32,4 +32,18 @@ describe('validateExtendedSelector', () => {
   it('ignores :is() and :where()', () => {
     expect(validateExtendedSelector('div:is(.foo, .bar)', 0)).toHaveLength(0);
   });
+
+  it('passes with valid { remove: true; } action block', () => {
+    expect(validateExtendedSelector('div:-abp-has(.ad) { remove: true; }', 0)).toHaveLength(0);
+  });
+
+  it('warns on unknown action block on extended selector', () => {
+    const results = validateExtendedSelector('div:-abp-has(.ad) { remove: false; }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('action'))).toBe(true);
+  });
+
+  it('still validates pseudo-class when valid action block present', () => {
+    const results = validateExtendedSelector('div:-abp-unknown(.ad) { remove: true; }', 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes(':-abp-unknown'))).toBe(true);
+  });
 });

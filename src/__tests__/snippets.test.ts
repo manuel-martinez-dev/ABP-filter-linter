@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, parseSnippetArgs } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, parseSnippetArgs, validateSnippetBody, detectMissingSnippetSeparator } from '../validators/snippets';
 
 describe('parseSnippetArgs', () => {
   it('splits simple args', () => {
@@ -286,5 +286,61 @@ describe('validateSnippetChain — race block', () => {
   it('allows skip-video inside race', () => {
     const calls = splitSnippetChain('race start; skip-video .player //condition; race stop');
     expect(validateSnippetChain(calls, 0)).toHaveLength(0);
+  });
+});
+
+describe('validateSnippetBody — unclosed quotes', () => {
+  it('returns no errors for balanced quotes', () => {
+    expect(validateSnippetBody("abort-on-property-read 'foo bar'", 0)).toHaveLength(0);
+  });
+
+  it('warns on unclosed single quote', () => {
+    const results = validateSnippetBody("abort-on-property-read 'unclosed", 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Unclosed'))).toBe(true);
+  });
+
+  it('returns no errors for empty body', () => {
+    expect(validateSnippetBody('', 0)).toHaveLength(0);
+  });
+});
+
+describe('detectMissingSnippetSeparator', () => {
+  it('detects missing #$# when snippet name follows domain directly', () => {
+    const result = detectMissingSnippetSeparator('example.comlog Hello');
+    expect(result).not.toBeNull();
+    expect(result!.message).toContain('#$#');
+  });
+
+  it('detects missing #$# with wildcard TLD', () => {
+    const result = detectMissingSnippetSeparator('example.*log Hello');
+    expect(result).not.toBeNull();
+  });
+
+  it('does not flag valid network rules', () => {
+    expect(detectMissingSnippetSeparator('||ads.example.com^$script')).toBeNull();
+  });
+
+  it('does not flag lines with proper #$# separator', () => {
+    expect(detectMissingSnippetSeparator('example.com#$#log Hello')).toBeNull();
+  });
+});
+
+describe('race winners validation', () => {
+  it('passes race start with valid integer winners', () => {
+    expect(validateSnippetCall({ name: 'race', args: ['start', '2'], nameOffset: 0 }, 0)).toHaveLength(0);
+  });
+
+  it('errors on non-numeric winners count', () => {
+    const results = validateSnippetCall({ name: 'race', args: ['start', 'abc'], nameOffset: 0 }, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('positive integer'))).toBe(true);
+  });
+
+  it('errors on zero as winners count', () => {
+    const results = validateSnippetCall({ name: 'race', args: ['start', '0'], nameOffset: 0 }, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('positive integer'))).toBe(true);
+  });
+
+  it('does not validate winners on race stop', () => {
+    expect(validateSnippetCall({ name: 'race', args: ['stop'], nameOffset: 0 }, 0)).toHaveLength(0);
   });
 });

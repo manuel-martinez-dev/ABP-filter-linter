@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator } from './validators/snippets';
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
@@ -64,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (parsed.type === 'comment' || parsed.type === 'unknown') continue;
 
       if (parsed.type === 'snippet') {
+        results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         const calls = splitSnippetChain(parsed.body);
         results.push(...validateSnippetChain(calls, parsed.bodyOffset));
         for (const call of calls) {
@@ -75,6 +76,10 @@ export function activate(context: vscode.ExtensionContext) {
         results.push(
           ...validateNetworkRule(parsed.body, parsed.type === 'exception', parsed.bodyOffset)
         );
+        if (parsed.type === 'network') {
+          const missingSep = detectMissingSnippetSeparator(parsed.raw);
+          if (missingSep) results.push(missingSep);
+        }
       }
 
       if (parsed.type === 'cosmetic') {

@@ -15,8 +15,6 @@ interface SnippetSchema {
   args: ArgSchema[];
   category?: string;
   noRace?: boolean;
-  noSvg?: boolean;
-  noShadowInSearch?: boolean;
 }
 
 const SNIPPETS = snippetData.snippets as Record<string, SnippetSchema>;
@@ -301,7 +299,72 @@ export function validateSnippetCall(
     argSearchOffset += argVal.length + 1; // +1 for separating space
   }
 
+  // Race winners must be a positive integer
+  if (name === 'race' && args[0] === 'start' && args.length > 1) {
+    if (!/^\d+$/.test(args[1]) || parseInt(args[1], 10) < 1) {
+      results.push({
+        message: `"race" winners count must be a positive integer, got "${args[1]}"`,
+        severity: 'error',
+        startCol: absStart,
+        endCol: absEnd,
+      });
+    }
+  }
+
   return results;
+}
+
+/** Check for unclosed single quotes in a snippet chain body */
+export function validateSnippetBody(body: string, bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+  let inQuote = false;
+  let quoteStart = -1;
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\\' && i + 1 < body.length) { i++; continue; }
+    if (ch === "'") {
+      if (!inQuote) { inQuote = true; quoteStart = i; }
+      else { inQuote = false; quoteStart = -1; }
+    }
+  }
+
+  if (inQuote) {
+    results.push({
+      message: 'Unclosed single quote in snippet arguments',
+      severity: 'warning',
+      startCol: bodyOffset + quoteStart,
+      endCol: bodyOffset + body.length,
+    });
+  }
+
+  return results;
+}
+
+/** Detect a network-classified line that looks like a snippet filter missing the #$# separator */
+export function detectMissingSnippetSeparator(raw: string): LintResult | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.startsWith('!') || trimmed.startsWith('||') || trimmed.startsWith('|') || trimmed.startsWith('@@')) return null;
+  if (trimmed.includes('$')) return null;
+
+  const spaceIdx = trimmed.indexOf(' ');
+  const firstToken = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+
+  for (const snippetName of Object.keys(SNIPPETS)) {
+    if (firstToken.endsWith(snippetName)) {
+      const domainPart = firstToken.slice(0, -snippetName.length);
+      if (domainPart.length > 0 && /^[a-zA-Z0-9*-]+(\.[a-zA-Z0-9*-]+)+$/.test(domainPart)) {
+        const rest = trimmed.slice(domainPart.length);
+        return {
+          message: `Missing "#$#" separator — did you mean "${domainPart}#$#${rest}"?`,
+          severity: 'warning',
+          startCol: 0,
+          endCol: trimmed.length,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 /** Validate race block structure across a full snippet chain */
