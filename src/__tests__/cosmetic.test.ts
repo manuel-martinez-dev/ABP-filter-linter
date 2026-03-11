@@ -37,4 +37,13 @@ describe('validateCosmeticSelector', () => {
   it('returns no errors for empty selector', async () => {
     expect(await validateCosmeticSelector('', 0)).toHaveLength(0);
   });
+
+  it('warns on malformed selector in hiding-exception (#@#)', async () => {
+    const results = await validateCosmeticSelector('div[invalid', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Malformed'))).toBe(true);
+  });
+
+  it('passes valid selector in hiding-exception (#@#)', async () => {
+    expect(await validateCosmeticSelector('.ad-banner', 0)).toHaveLength(0);
+  });
 });

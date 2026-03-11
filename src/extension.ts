@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
 
-      if (parsed.type === 'cosmetic') {
+      if (parsed.type === 'cosmetic' || parsed.type === 'hiding-exception') {
         const cosmeticResults = await validateCosmeticSelector(parsed.body, parsed.bodyOffset);
         results.push(...cosmeticResults);
       }
