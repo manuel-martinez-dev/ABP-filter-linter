@@ -4,6 +4,10 @@
   "description": "Validates Adblock Plus filter syntax in .txt files",
   "version": "0.2.0",
   "publisher": "manuel-martinez-dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manuel-martinez-dev/ABP-filter-linter"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
