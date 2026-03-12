@@ -11,6 +11,8 @@
   "engines": {
     "vscode": "^1.85.0"
   },
+  "icon": "icon.png",
+  "license": "MIT",
   "categories": ["Linters"],
   "activationEvents": [
     "onLanguage:plaintext"
