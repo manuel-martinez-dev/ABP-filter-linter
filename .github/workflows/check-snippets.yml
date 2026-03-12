@@ -1,0 +1,51 @@
+name: Check for new snippets in @eyeo/snippets
+
+on:
+  schedule:
+    - cron: '0 9 * * 5'  # Every Friday at 09:00 UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  check-snippets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install latest @eyeo/snippets
+        run: npm install @eyeo/snippets@latest --no-save
+
+      - name: Run snippet comparison
+        id: check
+        run: |
+          output=$(node .github/scripts/check-snippets.mjs 2>&1)
+          exit_code=$?
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$output" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit 0  # always pass this step, we handle result below
+
+      - name: Open PR if new snippets found
+        if: steps.check.outputs.exit_code == '2'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/new-snippets-detected
+          title: 'New snippets detected in @eyeo/snippets'
+          body: |
+            The following snippet(s) were found in `@eyeo/snippets` but are not yet in `src/data/snippets.json`:
+
+            ```
+            ${{ steps.check.outputs.output }}
+            ```
+
+            **Action required:** Review each new snippet in the [@eyeo/snippets source](https://gitlab.com/eyeo/anti-cv/snippets) and add it to `src/data/snippets.json` with the correct argument definitions.
+          commit-message: 'chore: flag new snippets from @eyeo/snippets'
+          labels: 'snippets,maintenance'
