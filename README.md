@@ -21,6 +21,7 @@ Then reload VSCode (`Ctrl+Shift+P` → Developer: Reload Window).
 - Network modifier compatibility checks
 - CSS selector validation for `##` rules
 - ABP pseudo-class validation for `#?#` rules
+- Duplicate filter detection
 - Only activates on `.txt` files
 
 ## Supported Filter Types
@@ -46,4 +47,4 @@ Press `F5` in VS Code to launch the Extension Development Host.
 
 ## Scope
 
-ABP-only. No AdGuard or uBlock Origin syntax.
+ABP/AdBlock-only. No AdGuard or uBlock Origin syntax.

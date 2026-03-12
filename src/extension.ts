@@ -96,6 +96,21 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
 
+    const seen = new Map<string, number>();
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i].trim();
+      if (!raw || raw.startsWith('!')) continue;
+      if (seen.has(raw)) {
+        const line = doc.lineAt(i);
+        const range = new vscode.Range(i, 0, i, line.text.length);
+        const diag = new vscode.Diagnostic(range, 'Duplicate filter', vscode.DiagnosticSeverity.Warning);
+        diag.source = 'abp-filter-linter';
+        diagnostics.push(diag);
+      } else {
+        seen.set(raw, i);
+      }
+    }
+
     collection.set(doc.uri, diagnostics);
 
     for (const editor of vscode.window.visibleTextEditors) {
