@@ -4,6 +4,7 @@ import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateS
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
+import { detectDoubleComma, extractFilterKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 import type { LintResult } from './types';
 
@@ -63,6 +64,9 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (parsed.type === 'comment' || parsed.type === 'unknown') continue;
 
+      const doubleComma = detectDoubleComma(lines[i]);
+      if (doubleComma) diagnostics.push(toDiagnostic(doubleComma, i, doc));
+
       if (parsed.type === 'snippet') {
         results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         const calls = splitSnippetChain(parsed.body);
@@ -100,14 +104,18 @@ export function activate(context: vscode.ExtensionContext) {
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i].trim();
       if (!raw || raw.startsWith('!')) continue;
-      if (seen.has(raw)) {
+      // Skip duplicate check for chained snippets (intentional compositions)
+      const snippetBody = raw.includes('#$#') ? raw.split('#$#')[1] : null;
+      if (snippetBody && snippetBody.includes(';')) continue;
+      const key = extractFilterKey(raw);
+      if (seen.has(key)) {
         const line = doc.lineAt(i);
         const range = new vscode.Range(i, 0, i, line.text.length);
         const diag = new vscode.Diagnostic(range, 'Duplicate filter', vscode.DiagnosticSeverity.Warning);
         diag.source = 'abp-filter-linter';
         diagnostics.push(diag);
       } else {
-        seen.set(raw, i);
+        seen.set(key, i);
       }
     }
 
