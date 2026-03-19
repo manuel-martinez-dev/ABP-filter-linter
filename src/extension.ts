@@ -67,6 +67,21 @@ export function activate(context: vscode.ExtensionContext) {
       const doubleComma = detectDoubleComma(lines[i]);
       if (doubleComma) diagnostics.push(toDiagnostic(doubleComma, i, doc));
 
+      if (
+        (parsed.type === 'snippet' || parsed.type === 'hiding-exception' || parsed.type === 'extended') &&
+        parsed.domains.length === 0
+      ) {
+        const sep = parsed.separator;
+        const range = new vscode.Range(i, 0, i, lines[i].length);
+        const diag = new vscode.Diagnostic(
+          range,
+          `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+          vscode.DiagnosticSeverity.Error
+        );
+        diag.source = 'abp-filter-linter';
+        diagnostics.push(diag);
+      }
+
       if (parsed.type === 'snippet') {
         results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         const calls = splitSnippetChain(parsed.body);
