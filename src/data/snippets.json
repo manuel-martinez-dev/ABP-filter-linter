@@ -726,28 +726,55 @@
       ]
     },
     "log-if-computed-style-matches": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "type", "required": true },
+        { "name": "specifier", "required": true },
+        { "name": "pairs", "required": true, "variadic": true }
+      ]
     },
     "log-if-iframe-loads": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "urlPattern", "required": true },
+        { "name": "type", "required": true },
+        { "name": "specifier", "required": false }
+      ]
     },
     "log-if-script-loads": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "urlPattern", "required": true },
+        { "name": "type", "required": true },
+        { "name": "specifier", "required": false }
+      ]
     },
     "log-if-selector-exists": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "selector", "required": true },
+        { "name": "type", "required": true },
+        { "name": "specifier", "required": false }
+      ]
     },
     "replace-xhr-request": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "search", "required": true },
+        { "name": "replacement", "required": false },
+        { "name": "needle", "required": false },
+        { "name": "mode", "required": false, "enum": ["replace", "append"] }
+      ]
     },
     "timer-override": {
-      "since": "TODO",
-      "args": []
+      "since": "2.7.0",
+      "args": [
+        { "name": "timerValue", "required": true },
+        { "name": "needle", "required": false },
+        { "name": "callbackFunc", "required": false },
+        { "name": "mode", "required": false, "enum": ["timeout", "interval", "both"] },
+        { "name": "stackNeedle", "required": false }
+      ]
     }
   },
   "deprecated": {
