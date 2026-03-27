@@ -41,12 +41,17 @@ jobs:
           branch: chore/new-snippets-detected
           title: 'New snippets detected in @eyeo/snippets'
           body: |
-            The following snippet(s) were found in `@eyeo/snippets` but are not yet in `src/data/snippets.json`:
+            The following snippet(s) were found in `@eyeo/snippets` and have been auto-added to `src/data/snippets.json` with detected argument definitions:
 
             ```
             ${{ steps.check.outputs.output }}
             ```
 
-            **Action required:** Review each new snippet in the [@eyeo/snippets source](https://gitlab.com/eyeo/anti-cv/snippets) and add it to `src/data/snippets.json` with the correct argument definitions.
+            **Action required:** Review the auto-detected argument definitions in `src/data/snippets.json`. For each snippet:
+            - Verify `required` flags and fix any that are incorrect
+            - Add any missing `enum` values (run `node .github/scripts/inspect-snippet.mjs <snippet-name>` locally to inspect the source)
+            - Add special fields if needed (`category`, `noRace`, `max`, etc.)
+
+            Reference: [@eyeo/snippets source](https://gitlab.com/eyeo/anti-cv/snippets)
           commit-message: 'chore: flag new snippets from @eyeo/snippets'
           labels: 'snippets,maintenance'
