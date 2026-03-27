@@ -4,7 +4,7 @@
  * Used by the check-snippets GitHub Action workflow.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -44,6 +44,12 @@ if (newSnippets.length === 0) {
   console.log('All snippets are up to date.');
   process.exit(0);
 }
+
+// Add placeholder entries for new snippets so the PR has real file changes
+for (const name of newSnippets) {
+  data.snippets[name] = { since: 'TODO', args: [] };
+}
+writeFileSync(dataPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
 console.log('NEW_SNIPPETS_FOUND');
 console.log(newSnippets.join('\n'));
