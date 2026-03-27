@@ -24,13 +24,14 @@ jobs:
       - name: Run snippet comparison
         id: check
         run: |
+          set +e
           output=$(node .github/scripts/check-snippets.mjs 2>&1)
           exit_code=$?
+          set -e
           echo "output<<EOF" >> $GITHUB_OUTPUT
           echo "$output" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
-          exit 0  # always pass this step, we handle result below
 
       - name: Open PR if new snippets found
         if: steps.check.outputs.exit_code == '2'
