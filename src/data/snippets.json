@@ -714,18 +714,45 @@
         {
           "name": "direction",
           "required": true,
-          "enum": ["start", "stop"]
+          "enum": [
+            "start",
+            "stop"
+          ]
         },
         {
           "name": "winners",
           "required": false
         }
       ]
+    },
+    "log-if-computed-style-matches": {
+      "since": "TODO",
+      "args": []
+    },
+    "log-if-iframe-loads": {
+      "since": "TODO",
+      "args": []
+    },
+    "log-if-script-loads": {
+      "since": "TODO",
+      "args": []
+    },
+    "log-if-selector-exists": {
+      "since": "TODO",
+      "args": []
+    },
+    "replace-xhr-request": {
+      "since": "TODO",
+      "args": []
+    },
+    "timer-override": {
+      "since": "TODO",
+      "args": []
     }
   },
   "deprecated": {
     "simulate-event-poc": "Replaced by simulate-mouse-event",
-    "hide-if-classifies": "Removed in @eyeo/snippets v2.0.0 \u2014 requires service worker backend",
-    "hide-if-graph-matches": "Removed in @eyeo/snippets v0.9.0 \u2014 ML snippet requiring external dependency"
+    "hide-if-classifies": "Removed in @eyeo/snippets v2.0.0 — requires service worker backend",
+    "hide-if-graph-matches": "Removed in @eyeo/snippets v0.9.0 — ML snippet requiring external dependency"
   }
 }
