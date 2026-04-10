@@ -848,6 +848,23 @@
           "required": false
         }
       ]
+    },
+    "log-if-inline-script-contains-fingerprint": {
+      "since": "2.8.0",
+      "args": [
+        {
+          "name": "textPattern",
+          "required": true
+        },
+        {
+          "name": "type",
+          "required": true
+        },
+        {
+          "name": "specifier",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
