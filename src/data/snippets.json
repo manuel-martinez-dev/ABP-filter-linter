@@ -865,6 +865,23 @@
           "required": false
         }
       ]
+    },
+    "log-if-anchor-href-matches": {
+      "since": "2.9.0",
+      "args": [
+        {
+          "name": "urlPattern",
+          "required": true
+        },
+        {
+          "name": "type",
+          "required": true
+        },
+        {
+          "name": "specifier",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
