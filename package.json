@@ -24,6 +24,13 @@
         "id": "plaintext",
         "extensions": [".txt"]
       }
+    ],
+    "commands": [
+      {
+        "command": "abp-filter-linter.lintWorkspace",
+        "title": "Lint Workspace .txt Files",
+        "category": "ABP Filter Linter"
+      }
     ]
   },
   "scripts": {

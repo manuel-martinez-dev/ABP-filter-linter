@@ -35,6 +35,14 @@ Then reload VSCode (`Ctrl+Shift+P` → Developer: Reload Window).
 | `@@` | Exception/allowlist rules |
 | `\|\|` | Network blocking rules |
 
+## Commands
+
+| Command | Description |
+|---|---|
+| `ABP Filter Linter: Lint Workspace .txt Files` | Scans all `.txt` files in the workspace and reports diagnostics in the Problems panel. Use this after opening a folder to lint files you haven't opened yet. |
+
+Open files are linted automatically as you type.
+
 ## Development
 
 ```bash

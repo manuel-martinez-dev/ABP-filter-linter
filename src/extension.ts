@@ -156,11 +156,20 @@ export function activate(context: vscode.ExtensionContext) {
 
   vscode.workspace.textDocuments.forEach(doc => lint(doc).catch(console.error));
 
-  vscode.workspace.findFiles('**/*.txt', '**/node_modules/**').then(uris => {
-    for (const uri of uris) {
-      vscode.workspace.openTextDocument(uri).then(doc => lint(doc).catch(console.error));
-    }
-  });
+  context.subscriptions.push(
+    vscode.commands.registerCommand('abp-filter-linter.lintWorkspace', async () => {
+      const uris = await vscode.workspace.findFiles('**/*.txt', '**/node_modules/**');
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Linting workspace .txt files…', cancellable: false },
+        async () => {
+          for (const uri of uris) {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await lint(doc);
+          }
+        }
+      );
+    })
+  );
 }
 
 export function deactivate() {}
