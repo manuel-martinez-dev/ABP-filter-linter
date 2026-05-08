@@ -325,6 +325,30 @@ describe('detectMissingSnippetSeparator', () => {
   });
 });
 
+describe('arg offset accuracy', () => {
+  it('enum squiggle column is accurate when earlier arg is quoted', () => {
+    // 'a b' is 5 source chars but 3 value chars — old code drifted by 2
+    // bad-mode starts at position 21 in the body
+    const calls = splitSnippetChain("event-override 'a b' bad-mode");
+    const results = validateSnippetCall(calls[0], 0);
+    const enumErr = results.find(r => r.severity === 'error' && r.message.includes('bad-mode'));
+    expect(enumErr).toBeDefined();
+    expect(enumErr!.startCol).toBe(21);
+    expect(enumErr!.endCol).toBe(29);
+  });
+
+  it('demarcator squiggle column is accurate when earlier arg is quoted', () => {
+    // 'ad text' is 9 source chars but 7 value chars — old code drifted by 2
+    // ^^svg^^ starts at position 47 in the body
+    const calls = splitSnippetChain("hide-if-contains-visible-text 'ad text' '.item ^^svg^^ .child'");
+    const results = validateSnippetCall(calls[0], 0);
+    const demErr = results.find(r => r.severity === 'error' && r.message.includes('^^svg^^'));
+    expect(demErr).toBeDefined();
+    expect(demErr!.startCol).toBe(47);
+    expect(demErr!.endCol).toBe(54);
+  });
+});
+
 describe('race winners validation', () => {
   it('passes race start with valid integer winners', () => {
     expect(validateSnippetCall({ name: 'race', args: ['start', '2'], nameOffset: 0 }, 0)).toHaveLength(0);

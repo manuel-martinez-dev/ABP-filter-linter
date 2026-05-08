@@ -130,9 +130,81 @@ export function parseSnippetArgs(body: string): string[] {
   return args;
 }
 
+interface ParsedArgDetail {
+  value: string;
+  start: number;   // position of first value content char in argBody (after opening quote)
+  end: number;     // position after last value content char in argBody (before closing quote)
+  rawEnd: number;  // position after last raw source char including closing quote
+}
+
+function parseSnippetArgsDetailed(body: string): ParsedArgDetail[] {
+  const result: ParsedArgDetail[] = [];
+  let value = '';
+  let inQuote = false;
+  let inRegex = false;
+  let contentStart = -1;
+  let i = 0;
+
+  const flush = (contentEnd: number, rawEnd: number) => {
+    result.push({ value, start: contentStart, end: contentEnd, rawEnd });
+    value = '';
+    contentStart = -1;
+  };
+
+  while (i < body.length) {
+    const ch = body[i];
+
+    if (inRegex) {
+      if (ch === '\\' && i + 1 < body.length) { value += ch + body[i + 1]; i += 2; continue; }
+      if (ch === '/') {
+        inRegex = false; value += ch; i++;
+        if (i >= body.length || body[i] === ' ') flush(i, i);
+        continue;
+      }
+      value += ch; i++;
+      continue;
+    }
+
+    if (ch === '\\' && i + 1 < body.length) {
+      if (contentStart === -1) contentStart = i;
+      value += body[i + 1]; i += 2;
+      continue;
+    }
+
+    if (ch === "'" && !inQuote) {
+      contentStart = i + 1; inQuote = true; i++;
+      continue;
+    }
+
+    if (ch === "'" && inQuote) {
+      inQuote = false; flush(i, i + 1); i++;
+      continue;
+    }
+
+    if (ch === ' ' && !inQuote) {
+      if (value.length > 0 && contentStart !== -1) flush(i, i);
+      i++;
+      continue;
+    }
+
+    if (ch === '/' && !inQuote && value.length === 0 && contentStart === -1) {
+      contentStart = i; inRegex = true; value += ch; i++;
+      continue;
+    }
+
+    if (contentStart === -1) contentStart = i;
+    value += ch; i++;
+  }
+
+  if (value.length > 0 && contentStart !== -1) flush(body.length, body.length);
+  return result;
+}
+
 export interface SnippetCall {
   name: string;
   args: string[];
+  /** source-accurate column ranges for each arg, relative to the snippet body start */
+  argOffsets?: Array<{ start: number; end: number }>;
   /** char offset of the snippet name within the body */
   nameOffset: number;
 }
@@ -166,10 +238,14 @@ export function splitSnippetChain(body: string): SnippetCall[] {
     const spaceIdx = trimmed.indexOf(' ');
     const name = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
     const argBody = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1);
-    const args = argBody ? parseSnippetArgs(argBody) : [];
 
     const nameOffset = body.indexOf(trimmed, offset);
-    calls.push({ name, args, nameOffset });
+    const detailed = argBody ? parseSnippetArgsDetailed(argBody) : [];
+    const args = detailed.map(a => a.value);
+    const argBodyBase = nameOffset + name.length + 1;
+    const argOffsets = detailed.map(a => ({ start: argBodyBase + a.start, end: argBodyBase + a.end }));
+
+    calls.push({ name, args, argOffsets, nameOffset });
     offset += part.length + 1;
   }
 
@@ -264,6 +340,13 @@ export function validateSnippetCall(
     const argVal = args[i];
     if (argVal === undefined) break;
 
+    const argStart = call.argOffsets?.[i] !== undefined
+      ? bodyOffset + call.argOffsets[i].start
+      : argSearchOffset;
+    const argEnd = call.argOffsets?.[i] !== undefined
+      ? bodyOffset + call.argOffsets[i].end
+      : argSearchOffset + argVal.length;
+
     // Enum validation
     if (argSchema.enum && !argSchema.enum.includes(argVal)) {
       const isNumericLiteral = argSchema.allowsNumericLiteral === true && /^\d+$/.test(argVal);
@@ -271,8 +354,8 @@ export function validateSnippetCall(
         results.push({
           message: `Invalid value "${argVal}" for "${argSchema.name}". Expected one of: ${argSchema.enum.join(', ')}`,
           severity: 'error',
-          startCol: argSearchOffset,
-          endCol: argSearchOffset + argVal.length,
+          startCol: argStart,
+          endCol: argEnd,
         });
       }
     }
@@ -287,8 +370,8 @@ export function validateSnippetCall(
               results.push({
                 message: `"${token}" is not supported in the "${argSchema.name}" argument of "${name}"`,
                 severity: 'error',
-                startCol: argSearchOffset + tokenPos,
-                endCol: argSearchOffset + tokenPos + token.length,
+                startCol: argStart + tokenPos,
+                endCol: argStart + tokenPos + token.length,
               });
             }
           }
@@ -296,7 +379,7 @@ export function validateSnippetCall(
       }
     }
 
-    argSearchOffset += argVal.length + 1; // +1 for separating space
+    if (!call.argOffsets) argSearchOffset += argVal.length + 1;
   }
 
   // Race winners must be a positive integer
