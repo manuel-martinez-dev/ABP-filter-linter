@@ -107,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (parsed.type === 'extended') {
-        results.push(...validateExtendedSelector(parsed.body, parsed.bodyOffset));
+        results.push(...await validateExtendedSelector(parsed.body, parsed.bodyOffset));
       }
 
       for (const r of results) {

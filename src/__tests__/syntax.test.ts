@@ -38,22 +38,36 @@ describe('detectDoubleComma', () => {
 });
 
 describe('extractFilterKey', () => {
-  it('extracts cosmetic body ignoring domain', () => {
-    expect(extractFilterKey('example.com##.ad')).toBe('##.ad');
-    expect(extractFilterKey('website.com##.ad')).toBe('##.ad');
+  it('different domains produce different keys (no false-positive duplicate)', () => {
+    expect(extractFilterKey('example.com##.ad')).not.toBe(extractFilterKey('website.com##.ad'));
   });
 
-  it('extracts snippet body ignoring domain', () => {
-    expect(extractFilterKey('example.com#$#log hello')).toBe('#$#log hello');
-    expect(extractFilterKey('website.com#$#log hello')).toBe('#$#log hello');
+  it('identical filters produce the same key (duplicate detection still works)', () => {
+    expect(extractFilterKey('example.com##.ad')).toBe(extractFilterKey('example.com##.ad'));
   });
 
-  it('extracts extended body ignoring domain', () => {
-    expect(extractFilterKey('example.com#?#div:-abp-has(.ad)')).toBe('#?#div:-abp-has(.ad)');
+  it('normalizes domain to lowercase', () => {
+    expect(extractFilterKey('Example.COM##.ad')).toBe(extractFilterKey('example.com##.ad'));
   });
 
-  it('extracts hiding-exception body ignoring domain', () => {
-    expect(extractFilterKey('example.com#@#.ad')).toBe('#@#.ad');
+  it('normalizes multi-domain order', () => {
+    expect(extractFilterKey('foo.com,example.com##.ad')).toBe(extractFilterKey('example.com,foo.com##.ad'));
+  });
+
+  it('handles no-domain cosmetic filter', () => {
+    expect(extractFilterKey('##.ad')).toBe('##.ad');
+  });
+
+  it('includes domain for snippet filters', () => {
+    expect(extractFilterKey('example.com#$#log hello')).not.toBe(extractFilterKey('website.com#$#log hello'));
+  });
+
+  it('includes domain for extended filters', () => {
+    expect(extractFilterKey('example.com#?#div:-abp-has(.ad)')).not.toBe(extractFilterKey('other.com#?#div:-abp-has(.ad)'));
+  });
+
+  it('includes domain for hiding-exception filters', () => {
+    expect(extractFilterKey('example.com#@#.ad')).not.toBe(extractFilterKey('other.com#@#.ad'));
   });
 
   it('returns full line for network rules', () => {

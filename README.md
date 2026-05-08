@@ -20,7 +20,7 @@ Then reload VSCode (`Ctrl+Shift+P` → Developer: Reload Window).
 - Argument count and enum validation for all snippets
 - Network modifier compatibility checks
 - CSS selector validation for `##` rules
-- ABP pseudo-class validation for `#?#` rules
+- CSS selector and ABP pseudo-class validation for `#?#` rules
 - Duplicate filter detection
 - Only activates on `.txt` files
 

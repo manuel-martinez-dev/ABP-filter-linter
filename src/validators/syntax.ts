@@ -23,6 +23,12 @@ export function detectDoubleComma(line: string): LintResult | null {
 }
 
 export function extractFilterKey(raw: string): string {
-  const match = raw.match(/(#\$#|##|#\?#|#@#).*/);
-  return match ? match[0] : raw;
+  const match = raw.match(/^([^#]*)(#\$#|##|#\?#|#@#)(.*)/);
+  if (!match) return raw;
+  const domains = match[1]
+    .split(',')
+    .map(d => d.trim().toLowerCase())
+    .sort()
+    .join(',');
+  return `${domains}${match[2]}${match[3]}`;
 }
