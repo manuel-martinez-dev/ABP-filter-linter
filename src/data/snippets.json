@@ -882,6 +882,27 @@
           "required": false
         }
       ]
+    },
+    "log-if-element-loads": {
+      "since": "2.10.1",
+      "args": [
+        {
+          "name": "urlPattern",
+          "required": true
+        },
+        {
+          "name": "type",
+          "required": true
+        },
+        {
+          "name": "tag",
+          "required": false
+        },
+        {
+          "name": "specifier",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
