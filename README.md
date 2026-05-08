@@ -4,13 +4,17 @@ VS Code extension that validates Adblock Plus filter syntax in `.txt` files.
 
 ## Installation
 
-Download `abp-filter-linter-0.3.0.vsix` from the repository and run:
+Search for **ABP Filter Linter** in the VS Code Extensions panel, or use Quick Open (`Ctrl+P`):
 
-```bash
-code --install-extension abp-filter-linter-0.3.0.vsix
+```
+ext install manuel-martinez-dev.abp-filter-linter
 ```
 
-Then reload VSCode (`Ctrl+Shift+P` → Developer: Reload Window).
+Alternatively, download `abp-filter-linter-0.5.0.vsix` from the repository and install manually:
+
+```bash
+code --install-extension abp-filter-linter-0.5.0.vsix
+```
 
 ## Features
 
