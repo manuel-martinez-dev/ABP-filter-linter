@@ -55,4 +55,9 @@ describe('validateExtendedSelector', () => {
   it('handles nested parens in ABP pseudo arg without false positive', async () => {
     expect(await validateExtendedSelector('div:-abp-has([attr="val(ue)"])', 0)).toHaveLength(0);
   });
+
+  it('warns on unclosed ABP pseudo argument', async () => {
+    const results = await validateExtendedSelector('div:-abp-has(.ad', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Malformed'))).toBe(true);
+  });
 });

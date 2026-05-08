@@ -17,7 +17,7 @@ async function getParser() {
   return parse;
 }
 
-function stripAbpPseudos(selector: string): string {
+function stripAbpPseudos(selector: string): string | null {
   let result = '';
   let i = 0;
   while (i < selector.length) {
@@ -40,6 +40,7 @@ function stripAbpPseudos(selector: string): string {
           else { i++; }
         }
       }
+      if (depth > 0) return null;
       result += ':not(*)';
     } else {
       result += selector[i];
@@ -94,7 +95,14 @@ export async function validateExtendedSelector(
 
   // Validate CSS structure after replacing ABP-specific pseudo calls with a valid placeholder
   const strippedForCss = stripAbpPseudos(selectorForPseudo);
-  if (strippedForCss.trim()) {
+  if (strippedForCss === null) {
+    results.push({
+      message: 'Malformed CSS selector: unclosed ABP pseudo-class argument',
+      severity: 'warning',
+      startCol: bodyOffset,
+      endCol: bodyOffset + selector.length,
+    });
+  } else if (strippedForCss.trim()) {
     try {
       const p = await getParser();
       p!(strippedForCss);
