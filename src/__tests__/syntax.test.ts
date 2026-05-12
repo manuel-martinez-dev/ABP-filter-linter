@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectDoubleComma, extractFilterKey } from '../validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, extractFilterKey } from '../validators/syntax';
 
 describe('detectDoubleComma', () => {
   it('returns null for valid line', () => {
@@ -34,6 +34,69 @@ describe('detectDoubleComma', () => {
     const result = detectDoubleComma('example.com,,website.com#$#log hello');
     expect(result).not.toBeNull();
     expect(result!.severity).toBe('error');
+  });
+});
+
+describe('detectSpacesInDomains', () => {
+  it('flags space after comma in snippet domain list', () => {
+    const result = detectSpacesInDomains('example.com, example.org,example.de#$#log hello');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(12);
+    expect(result!.endCol).toBe(13);
+  });
+
+  it('flags space after comma in cosmetic domain list', () => {
+    const result = detectSpacesInDomains('example.com, example.org##.ad');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(12);
+  });
+
+  it('flags tab in domain list', () => {
+    const result = detectSpacesInDomains('example.com,\texample.org##.ad');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(12);
+  });
+
+  it('does not flag clean multi-domain cosmetic rule', () => {
+    expect(detectSpacesInDomains('example.com,example.org##.ad')).toBeNull();
+  });
+
+  it('does not flag no-domain cosmetic rule', () => {
+    expect(detectSpacesInDomains('##.ad')).toBeNull();
+  });
+
+  it('does not flag spaces inside snippet body', () => {
+    expect(detectSpacesInDomains('example.com#$#log a b c')).toBeNull();
+  });
+
+  it('flags space around pipe in $domain= network option', () => {
+    const result = detectSpacesInDomains('||ads.com^$script,domain=example.com| example.org');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(37);
+  });
+
+  it('does not flag clean $domain= network option', () => {
+    expect(detectSpacesInDomains('||ads.com^$script,domain=example.com|example.org')).toBeNull();
+  });
+
+  it('does not flag network rule with no $domain= option', () => {
+    expect(detectSpacesInDomains('||ads.com^$script,image')).toBeNull();
+  });
+
+  it('flags space before pipe in $domain= network option', () => {
+    const result = detectSpacesInDomains('||ads.com^$script,domain=example.com |example.org');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(36);
+  });
+
+  it('flags space in $domain= on exception rule', () => {
+    const result = detectSpacesInDomains('@@||ads.com^$domain=foo.com| bar.com');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(28);
   });
 });
 
