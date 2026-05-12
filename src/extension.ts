@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const lint = async (doc: vscode.TextDocument) => {
     if (doc.languageId !== 'plaintext' || !doc.uri.fsPath.endsWith('.txt')) return;
-    const lines = doc.getText().split('\n');
+    const lines = doc.getText().split(/\r?\n/); // strip \r so CRLF files don't trigger false space errors
 
     if (!isAbpDocument(lines)) {
       collection.delete(doc.uri);
