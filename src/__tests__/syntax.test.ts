@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectDoubleComma, detectSpacesInDomains, extractFilterKey } from '../validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, extractFilterKey } from '../validators/syntax';
 
 describe('detectDoubleComma', () => {
   it('returns null for valid line', () => {
@@ -97,6 +97,44 @@ describe('detectSpacesInDomains', () => {
     expect(result).not.toBeNull();
     expect(result!.severity).toBe('error');
     expect(result!.startCol).toBe(28);
+  });
+});
+
+describe('detectTrailingWhitespace', () => {
+  it('returns null for clean filter', () => {
+    expect(detectTrailingWhitespace('example.com##iframe[src][style]')).toBeNull();
+  });
+
+  it('flags trailing spaces on cosmetic filter', () => {
+    const result = detectTrailingWhitespace('example.com##iframe[src][style]  ');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('warning');
+    expect(result!.startCol).toBe(31);
+    expect(result!.endCol).toBe(33);
+  });
+
+  it('flags trailing space after semicolon in snippet filter', () => {
+    const result = detectTrailingWhitespace('example.com#$#race stop; ');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(24);
+  });
+
+  it('returns null for snippet filter ending with semicolon and no space', () => {
+    expect(detectTrailingWhitespace('example.com#$#race stop;')).toBeNull();
+  });
+
+  it('returns null for blank-only line', () => {
+    expect(detectTrailingWhitespace('   ')).toBeNull();
+  });
+
+  it('flags trailing tab', () => {
+    const result = detectTrailingWhitespace('example.com##.ad\t');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(16);
+  });
+
+  it('does not flag spaces inside chained snippet body', () => {
+    expect(detectTrailingWhitespace("foo.*#$#hide-if-matches-xpath './/div'; hide-if-matches-xpath './/span'")).toBeNull();
   });
 });
 

@@ -4,7 +4,7 @@ import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateS
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
-import { detectDoubleComma, detectSpacesInDomains, extractFilterKey } from './validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, extractFilterKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 import type { LintResult } from './types';
 
@@ -69,6 +69,9 @@ export function activate(context: vscode.ExtensionContext) {
 
       const spacesInDomains = detectSpacesInDomains(lines[i]);
       if (spacesInDomains) diagnostics.push(toDiagnostic(spacesInDomains, i, doc));
+
+      const trailingWs = detectTrailingWhitespace(lines[i]);
+      if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
       if (
         (parsed.type === 'snippet' || parsed.type === 'hiding-exception' || parsed.type === 'extended') &&

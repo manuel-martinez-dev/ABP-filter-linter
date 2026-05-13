@@ -59,6 +59,18 @@ export function detectDoubleComma(line: string): LintResult | null {
   return null;
 }
 
+export function detectTrailingWhitespace(line: string): LintResult | null {
+  if (!line.trim()) return null;
+  const trimmed = line.trimEnd();
+  if (trimmed.length === line.length) return null;
+  return {
+    message: 'Trailing whitespace',
+    severity: 'warning',
+    startCol: trimmed.length,
+    endCol: line.length,
+  };
+}
+
 export function extractFilterKey(raw: string): string {
   const match = raw.match(/^([^#]*)(#\$#|##|#\?#|#@#)(.*)/);
   if (!match) return raw;
