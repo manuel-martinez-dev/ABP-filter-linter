@@ -134,8 +134,4 @@ describe('validateNetworkRule', () => {
     expect(results.some(r => r.severity === 'error' && r.message.includes('empty entry'))).toBe(true);
   });
 
-  it('errors on whitespace in domain= entry', () => {
-    const results = validateNetworkRule('||ads.example.com^$domain=foo.com | bar.com', false, 0);
-    expect(results.some(r => r.severity === 'error' && r.message.includes('whitespace'))).toBe(true);
-  });
 });

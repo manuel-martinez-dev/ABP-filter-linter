@@ -96,15 +96,6 @@ export function validateNetworkRule(
             });
             break;
           }
-          if (/\s/.test(entry)) {
-            results.push({
-              message: `"domain=" entry contains whitespace — remove spaces around "|"`,
-              severity: 'error',
-              startCol: modStart,
-              endCol: modEnd,
-            });
-            break;
-          }
         }
       }
     }

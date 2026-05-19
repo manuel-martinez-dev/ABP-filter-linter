@@ -88,25 +88,26 @@ export function activate(context: vscode.ExtensionContext) {
         diagnostics.push(diag);
       }
 
-      if (parsed.type === 'snippet' && parsed.domains.length === 0) {
-        const snippetName = parsed.body.trim().split(/\s+/)[0];
-        // log-if-* snippets are passive observers — valid without a domain scope
-        if (!snippetName.startsWith('log-if')) {
-          const sep = parsed.separator;
-          const range = new vscode.Range(i, 0, i, lines[i].length);
-          const diag = new vscode.Diagnostic(
-            range,
-            `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
-            vscode.DiagnosticSeverity.Error
-          );
-          diag.source = 'abp-filter-linter';
-          diagnostics.push(diag);
-        }
-      }
-
       if (parsed.type === 'snippet') {
-        results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         const calls = splitSnippetChain(parsed.body);
+
+        if (parsed.domains.length === 0) {
+          // allow domainless only when every snippet in the chain is a passive log-if observer
+          const allPassiveLogIf = calls.length > 0 && calls.every(call => call.name.startsWith('log-if'));
+          if (!allPassiveLogIf) {
+            const sep = parsed.separator;
+            const range = new vscode.Range(i, 0, i, lines[i].length);
+            const diag = new vscode.Diagnostic(
+              range,
+              `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+              vscode.DiagnosticSeverity.Error
+            );
+            diag.source = 'abp-filter-linter';
+            diagnostics.push(diag);
+          }
+        }
+
+        results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         results.push(...validateSnippetChain(calls, parsed.bodyOffset));
         for (const call of calls) {
           results.push(...validateSnippetCall(call, parsed.bodyOffset));

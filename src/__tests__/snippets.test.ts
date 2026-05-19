@@ -349,6 +349,23 @@ describe('arg offset accuracy', () => {
   });
 });
 
+describe('log-if domain exemption predicate', () => {
+  it('single log-if snippet is all-passive', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad');
+    expect(calls.length > 0 && calls.every(c => c.name.startsWith('log-if'))).toBe(true);
+  });
+
+  it('chained log-if + behavioral snippet is not all-passive', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad; abort-on-property-read adHandler');
+    expect(calls.every(c => c.name.startsWith('log-if'))).toBe(false);
+  });
+
+  it('chain of only log-if snippets is all-passive', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad; log-if-selector-exists .banner');
+    expect(calls.length > 0 && calls.every(c => c.name.startsWith('log-if'))).toBe(true);
+  });
+});
+
 describe('race winners validation', () => {
   it('passes race start with valid integer winners', () => {
     expect(validateSnippetCall({ name: 'race', args: ['start', '2'], nameOffset: 0 }, 0)).toHaveLength(0);
