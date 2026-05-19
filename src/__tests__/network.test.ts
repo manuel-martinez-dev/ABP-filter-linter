@@ -103,4 +103,39 @@ describe('validateNetworkRule', () => {
   it('allows inverted modifier ~third-party', () => {
     expect(validateNetworkRule('||ads.example.com^$~third-party', false, 0)).toHaveLength(0);
   });
+
+  it('accepts $webrtc modifier', () => {
+    expect(validateNetworkRule('||ads.example.com^$webrtc', false, 0)).toHaveLength(0);
+  });
+
+  it('accepts $webbundle modifier', () => {
+    expect(validateNetworkRule('||ads.example.com^$webbundle', false, 0)).toHaveLength(0);
+  });
+
+  it('warns on deprecated $collapse modifier', () => {
+    const results = validateNetworkRule('||ads.example.com^$collapse', false, 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('warning');
+    expect(results[0].message).toContain('collapse');
+  });
+
+  it('errors on double pipe in domain= value', () => {
+    const results = validateNetworkRule('/rule$xmlhttprequest,domain=actvid.rs||myflixerzz.tube|videostr.net', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('empty entry'))).toBe(true);
+  });
+
+  it('errors on leading pipe in domain= value', () => {
+    const results = validateNetworkRule('||ads.example.com^$domain=|foo.com', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('empty entry'))).toBe(true);
+  });
+
+  it('errors on trailing pipe in domain= value', () => {
+    const results = validateNetworkRule('||ads.example.com^$domain=foo.com|', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('empty entry'))).toBe(true);
+  });
+
+  it('errors on whitespace in domain= entry', () => {
+    const results = validateNetworkRule('||ads.example.com^$domain=foo.com | bar.com', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('whitespace'))).toBe(true);
+  });
 });

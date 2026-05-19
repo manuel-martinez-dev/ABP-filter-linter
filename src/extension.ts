@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
       if (
-        (parsed.type === 'snippet' || parsed.type === 'hiding-exception' || parsed.type === 'extended') &&
+        (parsed.type === 'hiding-exception' || parsed.type === 'extended') &&
         parsed.domains.length === 0
       ) {
         const sep = parsed.separator;
@@ -86,6 +86,22 @@ export function activate(context: vscode.ExtensionContext) {
         );
         diag.source = 'abp-filter-linter';
         diagnostics.push(diag);
+      }
+
+      if (parsed.type === 'snippet' && parsed.domains.length === 0) {
+        const snippetName = parsed.body.trim().split(/\s+/)[0];
+        // log-if-* snippets are passive observers — valid without a domain scope
+        if (!snippetName.startsWith('log-if')) {
+          const sep = parsed.separator;
+          const range = new vscode.Range(i, 0, i, lines[i].length);
+          const diag = new vscode.Diagnostic(
+            range,
+            `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+            vscode.DiagnosticSeverity.Error
+          );
+          diag.source = 'abp-filter-linter';
+          diagnostics.push(diag);
+        }
       }
 
       if (parsed.type === 'snippet') {

@@ -23,8 +23,13 @@
     "stylesheet",
     "subdocument",
     "third-party",
+    "webbundle",
+    "webrtc",
     "websocket",
     "xmlhttprequest"
+  ],
+  "deprecated": [
+    "collapse"
   ],
   "valueRequired": [
     "csp",
@@ -49,9 +54,11 @@
     "websocket",
     "popup",
     "font",
-    "media"
+    "media",
+    "webbundle",
+    "webrtc"
   ],
   "incompatible": {
-    "document": ["script", "image", "stylesheet", "subdocument", "xmlhttprequest", "websocket", "popup", "font", "media"]
+    "document": ["script", "image", "stylesheet", "subdocument", "xmlhttprequest", "websocket", "popup", "font", "media", "webbundle", "webrtc"]
   }
 }

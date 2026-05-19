@@ -57,22 +57,17 @@ export async function validateExtendedSelector(
   const results: LintResult[] = [];
   if (!selector.trim()) return results;
 
-  // Check for action block — same rules as cosmetic filters
   const actionMatch = selector.match(/\{([^}]*)\}\s*$/);
-  if (actionMatch) {
-    const actionBody = actionMatch[1];
-    if (!/remove\s*:\s*true/.test(actionBody)) {
-      const blockStart = selector.lastIndexOf('{');
-      results.push({
-        message: 'Unknown cosmetic action. Only "remove: true" is supported',
-        severity: 'warning',
-        startCol: bodyOffset + blockStart,
-        endCol: bodyOffset + selector.length,
-      });
-    }
+  if (actionMatch && !actionMatch[1].trim()) {
+    const blockStart = selector.lastIndexOf('{');
+    results.push({
+      message: 'Empty cosmetic action block',
+      severity: 'warning',
+      startCol: bodyOffset + blockStart,
+      endCol: bodyOffset + selector.length,
+    });
   }
 
-  // Strip the action block before pseudo-class validation
   const stripped = selector.replace(/\s*\{[^}]*\}\s*$/, '').trim();
   const selectorForPseudo = stripped || selector;
 

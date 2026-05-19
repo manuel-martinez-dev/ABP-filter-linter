@@ -37,9 +37,13 @@ describe('validateExtendedSelector', () => {
     expect(await validateExtendedSelector('div:-abp-has(.ad) { remove: true; }', 0)).toHaveLength(0);
   });
 
-  it('warns on unknown action block on extended selector', async () => {
-    const results = await validateExtendedSelector('div:-abp-has(.ad) { remove: false; }', 0);
-    expect(results.some(r => r.severity === 'warning' && r.message.includes('action'))).toBe(true);
+  it('passes with inline CSS action block', async () => {
+    expect(await validateExtendedSelector('div:-abp-has(.ad) { top: 0; }', 0)).toHaveLength(0);
+  });
+
+  it('warns on empty action block', async () => {
+    const results = await validateExtendedSelector('div:-abp-has(.ad) { }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Empty'))).toBe(true);
   });
 
   it('still validates pseudo-class when valid action block present', async () => {

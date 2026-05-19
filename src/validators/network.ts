@@ -2,6 +2,7 @@ import modifierData from '../data/modifiers.json';
 import type { LintResult } from '../types';
 
 const VALID = new Set(modifierData.valid);
+const DEPRECATED = new Set(modifierData.deprecated ?? []);
 const VALUE_REQUIRED = new Set(modifierData.valueRequired);
 const EXCEPTION_ONLY = new Set(modifierData.exceptionOnly);
 const INCOMPATIBLE = modifierData.incompatible as Record<string, string[]>;
@@ -47,6 +48,15 @@ export function validateNetworkRule(
       continue;
     }
 
+    if (DEPRECATED.has(key)) {
+      results.push({
+        message: `"${key}" is deprecated and may not be supported in future ABP versions`,
+        severity: 'warning',
+        startCol: modStart,
+        endCol: modEnd,
+      });
+    }
+
     // exception-only modifiers on non-@@ rules
     if (!negated && EXCEPTION_ONLY.has(key) && !isException) {
       results.push({
@@ -73,6 +83,29 @@ export function validateNetworkRule(
           startCol: modStart,
           endCol: modEnd,
         });
+      } else if (key === 'domain') {
+        const entries = value.split('|');
+        for (const entry of entries) {
+          const bare = entry.startsWith('~') ? entry.slice(1) : entry;
+          if (bare === '') {
+            results.push({
+              message: `"domain=" contains an empty entry — check for consecutive, leading, or trailing "|"`,
+              severity: 'error',
+              startCol: modStart,
+              endCol: modEnd,
+            });
+            break;
+          }
+          if (/\s/.test(entry)) {
+            results.push({
+              message: `"domain=" entry contains whitespace — remove spaces around "|"`,
+              severity: 'error',
+              startCol: modStart,
+              endCol: modEnd,
+            });
+            break;
+          }
+        }
       }
     }
 

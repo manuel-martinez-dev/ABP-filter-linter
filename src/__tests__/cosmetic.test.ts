@@ -24,14 +24,17 @@ describe('validateCosmeticSelector', () => {
     expect(await validateCosmeticSelector('.ad { margin: 0; remove: true; }', 0)).toHaveLength(0);
   });
 
-  it('warns on unknown action block', async () => {
-    const results = await validateCosmeticSelector('.ad { foo: bar; }', 0);
-    expect(results.some(r => r.severity === 'warning' && r.message.includes('action'))).toBe(true);
+  it('passes with inline CSS action block', async () => {
+    expect(await validateCosmeticSelector('.navigation--has-subnav { top: 0; }', 0)).toHaveLength(0);
   });
 
-  it('warns on CSS-only action block (no remove: true)', async () => {
-    const results = await validateCosmeticSelector('.ad { display: none; }', 0);
-    expect(results.some(r => r.severity === 'warning' && r.message.includes('action'))).toBe(true);
+  it('passes with multiple CSS declarations in action block', async () => {
+    expect(await validateCosmeticSelector('.aside { margin: 0; background: none }', 0)).toHaveLength(0);
+  });
+
+  it('warns on empty action block', async () => {
+    const results = await validateCosmeticSelector('.ad { }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Empty'))).toBe(true);
   });
 
   it('returns no errors for empty selector', async () => {
