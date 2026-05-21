@@ -1,4 +1,6 @@
+import { parse } from 'css-what';
 import type { LintResult } from '../types';
+import { findActionBlock, validateActionCss } from './utils';
 
 const VALID_ABP_PSEUDOS = new Set([
   ':-abp-has',
@@ -7,21 +9,14 @@ const VALID_ABP_PSEUDOS = new Set([
   ':xpath',
 ]);
 
-let parse: ((selector: string) => unknown) | null = null;
-
-async function getParser() {
-  if (!parse) {
-    const cssWhat = await import('css-what');
-    parse = cssWhat.parse;
-  }
-  return parse;
-}
+const abpRe = /(?::-abp-\w+|:xpath)\(/y;
 
 function stripAbpPseudos(selector: string): string | null {
   let result = '';
   let i = 0;
   while (i < selector.length) {
-    const abpMatch = /^(:-abp-\w+|:xpath)\(/.exec(selector.slice(i));
+    abpRe.lastIndex = i;
+    const abpMatch = abpRe.exec(selector);
     if (abpMatch) {
       i += abpMatch[0].length;
       let depth = 1;
@@ -50,33 +45,88 @@ function stripAbpPseudos(selector: string): string | null {
   return result;
 }
 
-export async function validateExtendedSelector(
+function validateAbpHasInners(
   selector: string,
   bodyOffset: number
-): Promise<LintResult[]> {
+): LintResult[] {
+  const results: LintResult[] = [];
+  const re = /:-abp-has\(/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(selector)) !== null) {
+    const argStart = match.index + match[0].length;
+    let depth = 1;
+    let inQuote = false;
+    let quoteChar = '';
+    let i = argStart;
+
+    while (i < selector.length) {
+      const ch = selector[i];
+      if (inQuote) {
+        if (ch === '\\' && i + 1 < selector.length) { i += 2; continue; }
+        if (ch === quoteChar) inQuote = false;
+        i++;
+      } else {
+        if (ch === '"' || ch === "'") { inQuote = true; quoteChar = ch; i++; }
+        else if (ch === '(') { depth++; i++; }
+        else if (ch === ')') {
+          depth--;
+          if (depth === 0) {
+            const innerArg = selector.slice(argStart, i);
+            const stripped = stripAbpPseudos(innerArg);
+            if (stripped !== null && stripped.trim()) {
+              try {
+                parse(stripped);
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : 'Invalid CSS selector';
+                results.push({
+                  message: `Malformed :-abp-has() selector: ${msg}`,
+                  severity: 'warning',
+                  startCol: bodyOffset + argStart,
+                  endCol: bodyOffset + i,
+                });
+              }
+            }
+            re.lastIndex = i + 1;
+            break;
+          }
+          i++;
+        } else { i++; }
+      }
+    }
+  }
+
+  return results;
+}
+
+export function validateExtendedSelector(
+  selector: string,
+  bodyOffset: number
+): LintResult[] {
   const results: LintResult[] = [];
   if (!selector.trim()) return results;
 
-  const actionMatch = selector.match(/\{([^}]*)\}\s*$/);
-  if (actionMatch && !actionMatch[1].trim()) {
-    const blockStart = selector.lastIndexOf('{');
-    results.push({
-      message: 'Empty cosmetic action block',
-      severity: 'warning',
-      startCol: bodyOffset + blockStart,
-      endCol: bodyOffset + selector.length,
-    });
+  const { selectorPart: stripped, actionContent, blockStart } = findActionBlock(selector);
+  if (blockStart !== -1 && actionContent !== null) {
+    if (!actionContent) {
+      results.push({
+        message: 'Empty cosmetic action block',
+        severity: 'warning',
+        startCol: bodyOffset + blockStart,
+        endCol: bodyOffset + selector.length,
+      });
+    } else {
+      results.push(...validateActionCss(actionContent, bodyOffset + blockStart, bodyOffset + selector.length));
+    }
   }
 
-  const stripped = selector.replace(/\s*\{[^}]*\}\s*$/, '').trim();
   const selectorForPseudo = stripped || selector;
 
-  // Find all :-abp-* or :xpath occurrences
   const pseudoRegex = /:[-\w]+\(/g;
   let match: RegExpExecArray | null;
 
   while ((match = pseudoRegex.exec(selectorForPseudo)) !== null) {
-    const token = match[0].slice(0, -1); // strip trailing (
+    const token = match[0].slice(0, -1);
     if (token.startsWith(':-abp-') && !VALID_ABP_PSEUDOS.has(token)) {
       const start = bodyOffset + match.index;
       results.push({
@@ -88,7 +138,6 @@ export async function validateExtendedSelector(
     }
   }
 
-  // Validate CSS structure after replacing ABP-specific pseudo calls with a valid placeholder
   const strippedForCss = stripAbpPseudos(selectorForPseudo);
   if (strippedForCss === null) {
     results.push({
@@ -97,10 +146,12 @@ export async function validateExtendedSelector(
       startCol: bodyOffset,
       endCol: bodyOffset + selector.length,
     });
-  } else if (strippedForCss.trim()) {
+    return results;
+  }
+
+  if (strippedForCss.trim()) {
     try {
-      const p = await getParser();
-      p!(strippedForCss);
+      parse(strippedForCss);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Invalid CSS selector';
       results.push({
@@ -111,6 +162,8 @@ export async function validateExtendedSelector(
       });
     }
   }
+
+  results.push(...validateAbpHasInners(selectorForPseudo, bodyOffset));
 
   return results;
 }

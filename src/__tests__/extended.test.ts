@@ -64,4 +64,37 @@ describe('validateExtendedSelector', () => {
     const results = await validateExtendedSelector('div:-abp-has(.ad', 0);
     expect(results.some(r => r.severity === 'warning' && r.message.includes('Malformed'))).toBe(true);
   });
+
+  it('warns on malformed inner selector in :-abp-has()', async () => {
+    const results = await validateExtendedSelector('div:-abp-has([invalid)', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes(':-abp-has()'))).toBe(true);
+  });
+
+  it('does not warn on valid inner selector in :-abp-has()', async () => {
+    const results = await validateExtendedSelector('div:-abp-has(.ad > span)', 0);
+    expect(results.filter(r => r.message.includes(':-abp-has()'))).toHaveLength(0);
+  });
+
+  it('does not validate inner arg of :-abp-contains() as CSS', async () => {
+    expect(await validateExtendedSelector('p:-abp-contains(Sponsored text)', 0)).toHaveLength(0);
+  });
+
+  it('passes when attribute value inside :-abp-has() contains braces', async () => {
+    expect(await validateExtendedSelector('div:-abp-has([data-x="val{x}"])', 0)).toHaveLength(0);
+  });
+
+  it('warns on missing colon in extended action block', async () => {
+    const results = await validateExtendedSelector('div:-abp-has(.ad) { display none }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('missing colon'))).toBe(true);
+  });
+
+  it('warns on empty value in extended action block', async () => {
+    const results = await validateExtendedSelector('div:-abp-has(.ad) { display: }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('empty value'))).toBe(true);
+  });
+
+  it('does not detect action block when quote swallows brace', async () => {
+    const results = await validateExtendedSelector("div:-abp-contains('text { remove: true }", 0);
+    expect(results.every(r => !r.message.includes('Empty'))).toBe(true);
+  });
 });

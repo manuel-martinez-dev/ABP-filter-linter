@@ -1,39 +1,31 @@
+import { parse } from 'css-what';
 import type { LintResult } from '../types';
+import { findActionBlock, validateActionCss } from './utils';
 
-let parse: ((selector: string) => unknown) | null = null;
-
-async function getParser() {
-  if (!parse) {
-    const cssWhat = await import('css-what');
-    parse = cssWhat.parse;
-  }
-  return parse;
-}
-
-export async function validateCosmeticSelector(
+export function validateCosmeticSelector(
   selector: string,
   bodyOffset: number
-): Promise<LintResult[]> {
+): LintResult[] {
   const results: LintResult[] = [];
   if (!selector.trim()) return results;
 
-  const actionMatch = selector.match(/\{([^}]*)\}\s*$/);
-  if (actionMatch && !actionMatch[1].trim()) {
-    const blockStart = selector.lastIndexOf('{');
-    results.push({
-      message: 'Empty cosmetic action block',
-      severity: 'warning',
-      startCol: bodyOffset + blockStart,
-      endCol: bodyOffset + selector.length,
-    });
+  const { selectorPart: stripped, actionContent, blockStart } = findActionBlock(selector);
+  if (blockStart !== -1 && actionContent !== null) {
+    if (!actionContent) {
+      results.push({
+        message: 'Empty cosmetic action block',
+        severity: 'warning',
+        startCol: bodyOffset + blockStart,
+        endCol: bodyOffset + selector.length,
+      });
+    } else {
+      results.push(...validateActionCss(actionContent, bodyOffset + blockStart, bodyOffset + selector.length));
+    }
   }
-
-  const stripped = selector.replace(/\s*\{[^}]*\}\s*$/, '').trim();
   if (!stripped) return results;
 
   try {
-    const p = await getParser();
-    p!(stripped);
+    parse(stripped);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Invalid CSS selector';
     results.push({

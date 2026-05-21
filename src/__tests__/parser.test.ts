@@ -48,4 +48,28 @@ describe('isAbpDocument', () => {
   it('returns false for plain text', () => {
     expect(isAbpDocument(['Hello world', 'This is a normal text file'])).toBe(false);
   });
+
+  it('returns true for pure cosmetic list (##div, no space)', () => {
+    expect(isAbpDocument(['##div.ad', '##.banner'])).toBe(true);
+  });
+
+  it('returns false for Markdown with ## headings (## + space)', () => {
+    expect(isAbpDocument(['## Heading', '## Another heading', 'Some text'])).toBe(false);
+  });
+
+  it('returns true for pure network list (|| line-start)', () => {
+    expect(isAbpDocument(['||example.com^', '||ads.example.com^$script'])).toBe(true);
+  });
+
+  it('returns true for hiding-exception list (#@#)', () => {
+    expect(isAbpDocument(['example.com#@#.ad-banner'])).toBe(true);
+  });
+
+  it('returns true for snippet list (#$#)', () => {
+    expect(isAbpDocument(['example.com#$#log Hello'])).toBe(true);
+  });
+
+  it('returns true for exception list (@@)', () => {
+    expect(isAbpDocument(['@@||example.com^$document'])).toBe(true);
+  });
 });

@@ -1,25 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, parseSnippetArgs, validateSnippetBody, detectMissingSnippetSeparator } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator } from '../validators/snippets';
 
-describe('parseSnippetArgs', () => {
+describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
-    expect(parseSnippetArgs('foo bar baz')).toEqual(['foo', 'bar', 'baz']);
+    expect(splitSnippetChain('log foo bar baz')[0].args).toEqual(['foo', 'bar', 'baz']);
   });
 
   it('handles single-quoted strings', () => {
-    expect(parseSnippetArgs("'hello world' foo")).toEqual(['hello world', 'foo']);
+    expect(splitSnippetChain("log 'hello world' foo")[0].args).toEqual(['hello world', 'foo']);
   });
 
   it('handles escaped quotes', () => {
-    expect(parseSnippetArgs("it\\'s")).toEqual(["it's"]);
+    expect(splitSnippetChain("log it\\'s")[0].args).toEqual(["it's"]);
   });
 
   it('treats unquoted /regex with spaces/ as a single arg', () => {
-    expect(parseSnippetArgs('Math /break;case \\$/')).toEqual(['Math', '/break;case \\$/']);
+    expect(splitSnippetChain('abort-on-property-read Math /break;case \\$$/')[0].args).toEqual(['Math', '/break;case \\$$/']);
   });
 
   it('treats regex with multiple spaces as a single arg', () => {
-    expect(parseSnippetArgs('document.createElement /ru-n4p|ua-n4p|загрузка.../')).toEqual(['document.createElement', '/ru-n4p|ua-n4p|загрузка.../']);
+    expect(splitSnippetChain('abort-on-property-read document.createElement /ru-n4p|ua-n4p|загрузка.../')[0].args)
+      .toEqual(['document.createElement', '/ru-n4p|ua-n4p|загрузка.../']);
+  });
+
+  it('splits args on tab characters', () => {
+    expect(splitSnippetChain('log foo\tbar\tbaz')[0].args).toEqual(['foo', 'bar', 'baz']);
   });
 });
 
@@ -85,7 +90,7 @@ describe('validateSnippetCall', () => {
 
 describe('empty string and quote-aware split fixes', () => {
   it("parses '' as an empty string argument", () => {
-    expect(parseSnippetArgs("ads ''")).toEqual(['ads', '']);
+    expect(splitSnippetChain("ads ''")[0].args).toEqual(['']);
   });
 
   it('does not split on ; inside single-quoted arg', () => {

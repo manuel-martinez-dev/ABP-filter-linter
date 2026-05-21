@@ -73,11 +73,13 @@ export function parseLine(raw: string, lineIndex: number): ParsedLine {
 
 /** Returns true if the document looks like an ABP filter list */
 export function isAbpDocument(lines: string[]): boolean {
+  if (lines.some(l => l.startsWith('[Adblock'))) return true;
   return lines.some(l =>
-    l.includes('##') ||
     l.includes('#$#') ||
     l.includes('#?#') ||
-    l.includes('||') ||
-    l.startsWith('@@')
+    l.includes('#@#') ||
+    l.startsWith('@@') ||
+    /##\S/.test(l) ||   // cosmetic: ## + non-space (Markdown ## headings always have a space)
+    l.startsWith('||')  // network: line-leading || (Markdown tables use single |)
   );
 }

@@ -49,4 +49,35 @@ describe('validateCosmeticSelector', () => {
   it('passes valid selector in hiding-exception (#@#)', async () => {
     expect(await validateCosmeticSelector('.ad-banner', 0)).toHaveLength(0);
   });
+
+  it('passes when attribute value contains braces (findActionBlock must not split on them)', async () => {
+    expect(await validateCosmeticSelector('div[data-x="val{x}"] { color: red }', 0)).toHaveLength(0);
+  });
+
+  it('passes display: none !important', async () => {
+    expect(await validateCosmeticSelector('div { display: none !important }', 0)).toHaveLength(0);
+  });
+
+  it('passes CSS custom property declaration', async () => {
+    expect(await validateCosmeticSelector('div { --custom: value }', 0)).toHaveLength(0);
+  });
+
+  it('warns on missing colon in CSS declaration', async () => {
+    const results = await validateCosmeticSelector('div { display none }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('missing colon'))).toBe(true);
+  });
+
+  it('warns on empty value in CSS declaration', async () => {
+    const results = await validateCosmeticSelector('div { display: }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('empty value'))).toBe(true);
+  });
+
+  it('warns on empty property name in CSS declaration', async () => {
+    const results = await validateCosmeticSelector('div { : none }', 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('empty property name'))).toBe(true);
+  });
+
+  it('does not warn when semicolon is inside url() value', async () => {
+    expect(await validateCosmeticSelector("div { background-image: url('a;b.png') }", 0)).toHaveLength(0);
+  });
 });

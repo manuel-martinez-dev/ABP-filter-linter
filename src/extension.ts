@@ -4,7 +4,7 @@ import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateS
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
-import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, extractFilterKey } from './validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 import type { LintResult } from './types';
 
@@ -29,6 +29,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(collection, errorLineDecoration, warningLineDecoration);
 
+  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   function applyDecorations(editor: vscode.TextEditor) {
     const diags = collection.get(editor.document.uri) ?? [];
     const errorRanges = diags
@@ -41,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
     editor.setDecorations(warningLineDecoration, warningRanges);
   }
 
-  const lint = async (doc: vscode.TextDocument) => {
+  const lint = (doc: vscode.TextDocument) => {
     if (doc.languageId !== 'plaintext' || !doc.uri.fsPath.endsWith('.txt')) return;
     const lines = doc.getText().split(/\r?\n/); // strip \r so CRLF files don't trigger false space errors
 
@@ -57,6 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     const diagnostics: vscode.Diagnostic[] = [];
+    const seen = new Map<string, number>();
 
     for (let i = 0; i < lines.length; i++) {
       const parsed = parseLine(lines[i], i);
@@ -125,35 +128,32 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (parsed.type === 'cosmetic' || parsed.type === 'hiding-exception') {
-        const cosmeticResults = await validateCosmeticSelector(parsed.body, parsed.bodyOffset);
-        results.push(...cosmeticResults);
+        results.push(...validateCosmeticSelector(parsed.body, parsed.bodyOffset));
       }
 
       if (parsed.type === 'extended') {
-        results.push(...await validateExtendedSelector(parsed.body, parsed.bodyOffset));
+        results.push(...validateExtendedSelector(parsed.body, parsed.bodyOffset));
       }
 
       for (const r of results) {
         diagnostics.push(toDiagnostic(r, i, doc));
       }
-    }
 
-    const seen = new Map<string, number>();
-    for (let i = 0; i < lines.length; i++) {
+      // duplicate detection (merged into primary pass)
       const raw = lines[i].trim();
-      if (!raw || raw.startsWith('!')) continue;
-      // Skip duplicate check for chained snippets (intentional compositions)
-      const snippetBody = raw.includes('#$#') ? raw.split('#$#')[1] : null;
-      if (snippetBody && snippetBody.includes(';')) continue;
-      const key = extractFilterKey(raw);
-      if (seen.has(key)) {
-        const line = doc.lineAt(i);
-        const range = new vscode.Range(i, 0, i, line.text.length);
-        const diag = new vscode.Diagnostic(range, 'Duplicate filter', vscode.DiagnosticSeverity.Warning);
-        diag.source = 'abp-filter-linter';
-        diagnostics.push(diag);
-      } else {
-        seen.set(key, i);
+      const snippetBody = parsed.type === 'snippet' ? parsed.body : null;
+      if (!snippetBody || !snippetBody.includes(';')) {
+        const key = parsed.separator && parsed.type !== 'exception'
+          ? `${parsed.domains.map(d => d.toLowerCase()).sort().join(',')}${parsed.separator}${parsed.body}`
+          : raw;
+        if (seen.has(key)) {
+          const range = new vscode.Range(i, 0, i, lines[i].length);
+          const diag = new vscode.Diagnostic(range, 'Duplicate filter', vscode.DiagnosticSeverity.Warning);
+          diag.source = 'abp-filter-linter';
+          diagnostics.push(diag);
+        } else {
+          seen.set(key, i);
+        }
       }
     }
 
@@ -168,16 +168,30 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(lint),
-    vscode.workspace.onDidChangeTextDocument(e => lint(e.document)),
+    vscode.workspace.onDidChangeTextDocument(e => {
+      const key = e.document.uri.toString();
+      clearTimeout(debounceTimers.get(key));
+      debounceTimers.set(key, setTimeout(() => lint(e.document), 300));
+    }),
+    vscode.workspace.onDidCloseTextDocument(doc => {
+      const key = doc.uri.toString();
+      clearTimeout(debounceTimers.get(key));
+      debounceTimers.delete(key);
+    }),
     vscode.workspace.onDidDeleteFiles(e => {
-      for (const file of e.files) collection.delete(file);
+      for (const file of e.files) {
+        const key = file.toString();
+        clearTimeout(debounceTimers.get(key));
+        debounceTimers.delete(key);
+        collection.delete(file);
+      }
     }),
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor) applyDecorations(editor);
     }),
   );
 
-  vscode.workspace.textDocuments.forEach(doc => lint(doc).catch(console.error));
+  vscode.workspace.textDocuments.forEach(doc => { try { lint(doc); } catch (e) { console.error(e); } });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('abp-filter-linter.lintWorkspace', async () => {
@@ -187,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
         async () => {
           for (const uri of uris) {
             const doc = await vscode.workspace.openTextDocument(uri);
-            await lint(doc);
+            lint(doc);
           }
         }
       );

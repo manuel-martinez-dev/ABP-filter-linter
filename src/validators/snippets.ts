@@ -59,7 +59,7 @@ function findClosest(name: string): string | null {
 }
 
 /** Parse snippet args respecting single-quoted strings and escape sequences */
-export function parseSnippetArgs(body: string): string[] {
+function parseSnippetArgs(body: string): string[] {
   const args: string[] = [];
   let current = '';
   let inQuote = false;
@@ -108,7 +108,7 @@ export function parseSnippetArgs(body: string): string[] {
       continue;
     }
 
-    if (ch === ' ' && !inQuote) {
+    if ((ch === ' ' || ch === '\t') && !inQuote) {
       if (current.length > 0) { args.push(current); current = ''; }
       i++;
       continue;
@@ -181,7 +181,7 @@ function parseSnippetArgsDetailed(body: string): ParsedArgDetail[] {
       continue;
     }
 
-    if (ch === ' ' && !inQuote) {
+    if ((ch === ' ' || ch === '\t') && !inQuote) {
       if (value.length > 0 && contentStart !== -1) flush(i, i);
       i++;
       continue;
@@ -235,7 +235,7 @@ export function splitSnippetChain(body: string): SnippetCall[] {
     const trimmed = part.trim();
     if (trimmed.length === 0) { offset += part.length + 1; continue; }
 
-    const spaceIdx = trimmed.indexOf(' ');
+    const spaceIdx = trimmed.search(/[ \t]/);
     const name = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
     const argBody = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1);
 
