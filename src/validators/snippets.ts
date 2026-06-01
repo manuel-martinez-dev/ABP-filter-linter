@@ -20,6 +20,14 @@ interface SnippetSchema {
 const SNIPPETS = snippetData.snippets as Record<string, SnippetSchema>;
 const DEPRECATED = snippetData.deprecated as Record<string, string>;
 
+export function isPassiveSnippet(name: string): boolean {
+  return name.startsWith('log-if-');
+}
+
+export function snippetChainRequiresDomain(calls: SnippetCall[]): boolean {
+  return !(calls.length > 0 && calls.every(call => isPassiveSnippet(call.name)));
+}
+
 /** Snippets where specific arg positions forbid certain shadow DOM demarcators */
 const FORBIDDEN_DEMARCATORS: Record<string, Array<{ argIndex: number; tokens: string[] }>> = {
   'hide-if-contains-visible-text': [

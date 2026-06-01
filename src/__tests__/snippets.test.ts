@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
@@ -357,17 +357,43 @@ describe('arg offset accuracy', () => {
 describe('log-if domain exemption predicate', () => {
   it('single log-if snippet is all-passive', () => {
     const calls = splitSnippetChain('log-if-selector-exists .ad');
-    expect(calls.length > 0 && calls.every(c => c.name.startsWith('log-if'))).toBe(true);
+    expect(calls.length > 0 && calls.every(c => isPassiveSnippet(c.name))).toBe(true);
   });
 
   it('chained log-if + behavioral snippet is not all-passive', () => {
     const calls = splitSnippetChain('log-if-selector-exists .ad; abort-on-property-read adHandler');
-    expect(calls.every(c => c.name.startsWith('log-if'))).toBe(false);
+    expect(calls.every(c => isPassiveSnippet(c.name))).toBe(false);
   });
 
   it('chain of only log-if snippets is all-passive', () => {
     const calls = splitSnippetChain('log-if-selector-exists .ad; log-if-selector-exists .banner');
-    expect(calls.length > 0 && calls.every(c => c.name.startsWith('log-if'))).toBe(true);
+    expect(calls.length > 0 && calls.every(c => isPassiveSnippet(c.name))).toBe(true);
+  });
+});
+
+describe('snippetChainRequiresDomain', () => {
+  it('requires domain for empty chain', () => {
+    expect(snippetChainRequiresDomain([])).toBe(true);
+  });
+
+  it('requires domain for behavioral snippet', () => {
+    const calls = splitSnippetChain('abort-on-property-read adHandler');
+    expect(snippetChainRequiresDomain(calls)).toBe(true);
+  });
+
+  it('requires domain for mixed chain (log-if + behavioral)', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad; abort-on-property-read adHandler');
+    expect(snippetChainRequiresDomain(calls)).toBe(true);
+  });
+
+  it('does not require domain for single log-if-* snippet', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad');
+    expect(snippetChainRequiresDomain(calls)).toBe(false);
+  });
+
+  it('does not require domain for chain of only log-if-* snippets', () => {
+    const calls = splitSnippetChain('log-if-selector-exists .ad; log-if-selector-exists .banner');
+    expect(snippetChainRequiresDomain(calls)).toBe(false);
   });
 });
 

@@ -98,6 +98,14 @@ describe('detectSpacesInDomains', () => {
     expect(result!.severity).toBe('error');
     expect(result!.startCol).toBe(28);
   });
+
+  it('flags space in $domain= on regex rule with $ in URL pattern', () => {
+    // indexOf('$') would find the wrong $ inside the pattern and miss the space
+    const result = detectSpacesInDomains('/ads\\.js$/$domain=a.com | b.com');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(23);
+  });
 });
 
 describe('detectTrailingWhitespace', () => {

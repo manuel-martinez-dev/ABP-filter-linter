@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
@@ -94,20 +94,16 @@ export function activate(context: vscode.ExtensionContext) {
       if (parsed.type === 'snippet') {
         const calls = splitSnippetChain(parsed.body);
 
-        if (parsed.domains.length === 0) {
-          // allow domainless only when every snippet in the chain is a passive log-if observer
-          const allPassiveLogIf = calls.length > 0 && calls.every(call => call.name.startsWith('log-if'));
-          if (!allPassiveLogIf) {
-            const sep = parsed.separator;
-            const range = new vscode.Range(i, 0, i, lines[i].length);
-            const diag = new vscode.Diagnostic(
-              range,
-              `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
-              vscode.DiagnosticSeverity.Error
-            );
-            diag.source = 'abp-filter-linter';
-            diagnostics.push(diag);
-          }
+        if (parsed.domains.length === 0 && snippetChainRequiresDomain(calls)) {
+          const sep = parsed.separator;
+          const range = new vscode.Range(i, 0, i, lines[i].length);
+          const diag = new vscode.Diagnostic(
+            range,
+            `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+            vscode.DiagnosticSeverity.Error
+          );
+          diag.source = 'abp-filter-linter';
+          diagnostics.push(diag);
         }
 
         results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
