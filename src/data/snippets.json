@@ -903,6 +903,48 @@
           "required": false
         }
       ]
+    },
+    "tmp-yt-buffering-spoof": {
+      "since": "2.11.0",
+      "args": [
+        {
+          "name": "disabledHooks",
+          "required": true
+        },
+        {
+          "name": "lateMuteWindowMs",
+          "required": true
+        },
+        {
+          "name": "userGestureWindowMs",
+          "required": true
+        },
+        {
+          "name": "paths",
+          "required": true
+        }
+      ]
+    },
+    "tmp-yt-force-reload": {
+      "since": "2.11.0",
+      "args": [
+        {
+          "name": "mode",
+          "required": true
+        },
+        {
+          "name": "errorMode",
+          "required": true
+        },
+        {
+          "name": "delayMs",
+          "required": true
+        },
+        {
+          "name": "paths",
+          "required": true
+        }
+      ]
     }
   },
   "deprecated": {
