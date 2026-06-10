@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, extractFilterKey } from '../validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from '../validators/syntax';
+import { parseLine } from '../parser';
 
 describe('detectDoubleComma', () => {
   it('returns null for valid line', () => {
@@ -34,6 +35,17 @@ describe('detectDoubleComma', () => {
     const result = detectDoubleComma('example.com,,website.com#$#log hello');
     expect(result).not.toBeNull();
     expect(result!.severity).toBe('error');
+  });
+
+  it('still flags ,, when the option list is malformed by it', () => {
+    const result = detectDoubleComma('foo$image,,script');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(9);
+    expect(result!.endCol).toBe(11);
+  });
+
+  it('does not flag ,, inside a regex filter body', () => {
+    expect(detectDoubleComma('/a,,b$/')).toBeNull();
   });
 });
 
@@ -146,40 +158,50 @@ describe('detectTrailingWhitespace', () => {
   });
 });
 
-describe('extractFilterKey', () => {
+describe('buildDuplicateKey', () => {
+  const key = (line: string) => buildDuplicateKey(parseLine(line, 0));
+
   it('different domains produce different keys (no false-positive duplicate)', () => {
-    expect(extractFilterKey('example.com##.ad')).not.toBe(extractFilterKey('website.com##.ad'));
+    expect(key('example.com##.ad')).not.toBe(key('website.com##.ad'));
   });
 
   it('identical filters produce the same key (duplicate detection still works)', () => {
-    expect(extractFilterKey('example.com##.ad')).toBe(extractFilterKey('example.com##.ad'));
+    expect(key('example.com##.ad')).toBe(key('example.com##.ad'));
   });
 
   it('normalizes domain to lowercase', () => {
-    expect(extractFilterKey('Example.COM##.ad')).toBe(extractFilterKey('example.com##.ad'));
+    expect(key('Example.COM##.ad')).toBe(key('example.com##.ad'));
   });
 
   it('normalizes multi-domain order', () => {
-    expect(extractFilterKey('foo.com,example.com##.ad')).toBe(extractFilterKey('example.com,foo.com##.ad'));
+    expect(key('foo.com,example.com##.ad')).toBe(key('example.com,foo.com##.ad'));
   });
 
   it('handles no-domain cosmetic filter', () => {
-    expect(extractFilterKey('##.ad')).toBe('##.ad');
+    expect(key('##.ad')).toBe('##.ad');
   });
 
   it('includes domain for snippet filters', () => {
-    expect(extractFilterKey('example.com#$#log hello')).not.toBe(extractFilterKey('website.com#$#log hello'));
+    expect(key('example.com#$#log hello')).not.toBe(key('website.com#$#log hello'));
   });
 
   it('includes domain for extended filters', () => {
-    expect(extractFilterKey('example.com#?#div:-abp-has(.ad)')).not.toBe(extractFilterKey('other.com#?#div:-abp-has(.ad)'));
+    expect(key('example.com#?#div:-abp-has(.ad)')).not.toBe(key('other.com#?#div:-abp-has(.ad)'));
   });
 
   it('includes domain for hiding-exception filters', () => {
-    expect(extractFilterKey('example.com#@#.ad')).not.toBe(extractFilterKey('other.com#@#.ad'));
+    expect(key('example.com#@#.ad')).not.toBe(key('other.com#@#.ad'));
   });
 
   it('returns full line for network rules', () => {
-    expect(extractFilterKey('||ads.example.com^$script')).toBe('||ads.example.com^$script');
+    expect(key('||ads.example.com^$script')).toBe('||ads.example.com^$script');
+  });
+
+  it('returns full line for exception rules', () => {
+    expect(key('@@||x.com^$elemhide')).toBe('@@||x.com^$elemhide');
+  });
+
+  it('returns null for multi-snippet chains (deliberately skipped)', () => {
+    expect(key('a.com#$#log a; log b')).toBeNull();
   });
 });

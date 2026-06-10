@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateNetworkRule } from '../validators/network';
+import { validateNetworkRule, findOptionsSeparator } from '../validators/network';
 
 describe('validateNetworkRule', () => {
   it('returns no errors for valid rule with no modifiers', () => {
@@ -134,4 +134,47 @@ describe('validateNetworkRule', () => {
     expect(results.some(r => r.severity === 'error' && r.message.includes('empty entry'))).toBe(true);
   });
 
+  it('does not flag $ anchor in regex filters', () => {
+    expect(validateNetworkRule('/ads$/', false, 0)).toHaveLength(0);
+    expect(validateNetworkRule('/banner\\d+$/', false, 0)).toHaveLength(0);
+  });
+
+  it('treats trailing bare $ as pattern text', () => {
+    expect(validateNetworkRule('||example.com/path$', false, 0)).toHaveLength(0);
+  });
+
+  it('accepts header value containing =', () => {
+    expect(validateNetworkRule('||ads.example.com^$header=X-Frame-Options=deny', false, 0)).toHaveLength(0);
+  });
+
+  it('reports correct range for modifier after a spaced comma', () => {
+    const results = validateNetworkRule('||x.com^$foo, bar', false, 0);
+    expect(results).toHaveLength(2);
+    expect(results[1].message).toContain('bar');
+    expect(results[1].startCol).toBe(14);
+    expect(results[1].endCol).toBe(17);
+  });
+
+});
+
+describe('findOptionsSeparator', () => {
+  it('finds the options $', () => {
+    expect(findOptionsSeparator('||x.com^$script')).toBe(8);
+  });
+
+  it('returns -1 for pure regex filters', () => {
+    expect(findOptionsSeparator('/ads$/')).toBe(-1);
+  });
+
+  it('returns -1 when nothing follows $', () => {
+    expect(findOptionsSeparator('foo$')).toBe(-1);
+  });
+
+  it('picks the last valid $', () => {
+    expect(findOptionsSeparator('/ads$/$image')).toBe(6);
+  });
+
+  it('returns -1 when options are malformed (,,)', () => {
+    expect(findOptionsSeparator('||x.com^$script,,image')).toBe(-1);
+  });
 });

@@ -1,4 +1,6 @@
 import type { LintResult } from '../types';
+import type { ParsedLine } from '../parser';
+import { findOptionsSeparator } from './network';
 
 export function detectSpacesInDomains(line: string): LintResult | null {
   // Cosmetic/snippet/extended/hiding-exception: check domain part before separator
@@ -48,7 +50,11 @@ export function detectDoubleComma(line: string): LintResult | null {
   }
 
   // For network rules: only check options part (after $) — not the URL pattern
-  const dollarIdx = line.indexOf('$');
+  let dollarIdx = findOptionsSeparator(line);
+  if (dollarIdx === -1 && !(line.length > 1 && line.startsWith('/') && line.endsWith('/'))) {
+    // malformed options (e.g. ",,") won't match the option shape — fall back to first "$"
+    dollarIdx = line.indexOf('$');
+  }
   if (dollarIdx !== -1) {
     const optionsPart = line.slice(dollarIdx);
     const col = optionsPart.indexOf(',,');
@@ -71,13 +77,10 @@ export function detectTrailingWhitespace(line: string): LintResult | null {
   };
 }
 
-export function extractFilterKey(raw: string): string {
-  const match = raw.match(/^([^#]*)(#\$#|##|#\?#|#@#)(.*)/);
-  if (!match) return raw;
-  const domains = match[1]
-    .split(',')
-    .map(d => d.trim().toLowerCase())
-    .sort()
-    .join(',');
-  return `${domains}${match[2]}${match[3]}`;
+/** Key for duplicate detection; null for multi-snippet chains (deliberately skipped) */
+export function buildDuplicateKey(parsed: ParsedLine): string | null {
+  if (parsed.type === 'snippet' && parsed.body.includes(';')) return null;
+  return parsed.separator && parsed.type !== 'exception'
+    ? `${parsed.domains.map(d => d.toLowerCase()).sort().join(',')}${parsed.separator}${parsed.body}`
+    : parsed.raw.trim();
 }

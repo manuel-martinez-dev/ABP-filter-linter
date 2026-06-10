@@ -7,6 +7,16 @@ const VALUE_REQUIRED = new Set(modifierData.valueRequired);
 const EXCEPTION_ONLY = new Set(modifierData.exceptionOnly);
 const INCOMPATIBLE = modifierData.incompatible as Record<string, string[]>;
 
+// Option-list shape after "$" — looser than ABP core ([\w.*-], optional space after commas) so domain-like typos still get flagged
+const OPTIONS_RE = /^(.*)\$(~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*)$/;
+
+/** Last "$" counts as options separator only if the rest looks like an option list; -1 for regex filters and literal "$" */
+export function findOptionsSeparator(body: string): number {
+  if (body.length > 1 && body.startsWith('/') && body.endsWith('/')) return -1;
+  const match = OPTIONS_RE.exec(body);
+  return match ? match[1].length : -1;
+}
+
 export function validateNetworkRule(
   body: string,
   isException: boolean,
@@ -14,7 +24,7 @@ export function validateNetworkRule(
 ): LintResult[] {
   const results: LintResult[] = [];
 
-  const dollarIdx = body.lastIndexOf('$');
+  const dollarIdx = findOptionsSeparator(body);
   if (dollarIdx === -1) return results;
 
   const modifierStr = body.slice(dollarIdx + 1);
@@ -29,8 +39,12 @@ export function validateNetworkRule(
     const trimmedMod = mod.trim();
     const negated = trimmedMod.startsWith('~');
     const raw = negated ? trimmedMod.slice(1) : trimmedMod;
-    const [key, value] = raw.split('=');
-    const modStart = bodyOffset + dollarIdx + 1 + modRunningOffset;
+    // split at first "=" only — values may contain "=" (e.g. header=X-Frame-Options=deny)
+    const eqIdx = raw.indexOf('=');
+    const key = eqIdx === -1 ? raw : raw.slice(0, eqIdx);
+    const value = eqIdx === -1 ? undefined : raw.slice(eqIdx + 1);
+    const leading = mod.length - mod.trimStart().length;
+    const modStart = bodyOffset + dollarIdx + 1 + modRunningOffset + leading;
     const modEnd = modStart + trimmedMod.length;
     modRunningOffset += mod.length + 1; // +1 for the comma
 

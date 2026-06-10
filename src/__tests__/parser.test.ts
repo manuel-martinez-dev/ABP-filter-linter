@@ -38,6 +38,25 @@ describe('parseLine', () => {
     const p = parseLine('a.com,b.com,~c.com#$#log test', 0);
     expect(p.domains).toEqual(['a.com', 'b.com', '~c.com']);
   });
+
+  it('picks the earliest separator, not priority order (#@# inside attribute)', () => {
+    const p = parseLine('foo.com##div[id="#@#x"]', 0);
+    expect(p.type).toBe('cosmetic');
+    expect(p.domains).toEqual(['foo.com']);
+    expect(p.body).toBe('div[id="#@#x"]');
+  });
+
+  it('picks the earliest separator, not priority order (#$# inside attribute)', () => {
+    const p = parseLine('foo.com##div[onclick="#$#x"]', 0);
+    expect(p.type).toBe('cosmetic');
+    expect(p.body).toBe('div[onclick="#$#x"]');
+  });
+
+  it('keeps hiding-exception when #@# precedes ##', () => {
+    const p = parseLine('foo.com#@##ad', 0);
+    expect(p.type).toBe('hiding-exception');
+    expect(p.body).toBe('#ad');
+  });
 });
 
 describe('isAbpDocument', () => {

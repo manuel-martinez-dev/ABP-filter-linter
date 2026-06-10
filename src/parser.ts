@@ -45,18 +45,24 @@ export function parseLine(raw: string, lineIndex: number): ParsedLine {
     return { type: 'exception', domains: [], body: trimmed.slice(2), separator: '@@', raw, lineIndex, bodyOffset };
   }
 
-  // Cosmetic-style separators
+  // Cosmetic-style separators — earliest match wins (ties go to the longer separator)
+  let found: { sep: string; type: FilterType; idx: number } | null = null;
   for (const { sep, type } of SEPARATORS) {
     const idx = trimmed.indexOf(sep);
-    if (idx !== -1) {
-      const domainStr = trimmed.slice(0, idx);
-      const body = trimmed.slice(idx + sep.length);
-      const domains = domainStr
-        ? domainStr.split(',').map(d => d.trim()).filter(Boolean)
-        : [];
-      const bodyOffset = raw.indexOf(sep) + sep.length;
-      return { type, domains, body, separator: sep, raw, lineIndex, bodyOffset };
+    if (idx === -1) continue;
+    if (!found || idx < found.idx || (idx === found.idx && sep.length > found.sep.length)) {
+      found = { sep, type, idx };
     }
+  }
+  if (found) {
+    const { sep, type, idx } = found;
+    const domainStr = trimmed.slice(0, idx);
+    const body = trimmed.slice(idx + sep.length);
+    const domains = domainStr
+      ? domainStr.split(',').map(d => d.trim()).filter(Boolean)
+      : [];
+    const bodyOffset = raw.indexOf(sep) + sep.length;
+    return { type, domains, body, separator: sep, raw, lineIndex, bodyOffset };
   }
 
   // Network rules

@@ -4,7 +4,7 @@ import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateS
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
-import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace } from './validators/syntax';
+import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 import type { LintResult } from './types';
 
@@ -76,10 +76,8 @@ export function activate(context: vscode.ExtensionContext) {
       const trailingWs = detectTrailingWhitespace(lines[i]);
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
-      if (
-        (parsed.type === 'hiding-exception' || parsed.type === 'extended') &&
-        parsed.domains.length === 0
-      ) {
+      // generic #@# exceptions are valid ABP syntax — only #?# requires a domain
+      if (parsed.type === 'extended' && parsed.domains.length === 0) {
         const sep = parsed.separator;
         const range = new vscode.Range(i, 0, i, lines[i].length);
         const diag = new vscode.Diagnostic(
@@ -136,12 +134,8 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       // duplicate detection (merged into primary pass)
-      const raw = lines[i].trim();
-      const snippetBody = parsed.type === 'snippet' ? parsed.body : null;
-      if (!snippetBody || !snippetBody.includes(';')) {
-        const key = parsed.separator && parsed.type !== 'exception'
-          ? `${parsed.domains.map(d => d.toLowerCase()).sort().join(',')}${parsed.separator}${parsed.body}`
-          : raw;
+      const key = buildDuplicateKey(parsed);
+      if (key !== null) {
         if (seen.has(key)) {
           const range = new vscode.Range(i, 0, i, lines[i].length);
           const diag = new vscode.Diagnostic(range, 'Duplicate filter', vscode.DiagnosticSeverity.Warning);
