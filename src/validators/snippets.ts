@@ -1,5 +1,8 @@
 import snippetData from '../data/snippets.json';
+import modifierData from '../data/modifiers.json';
 import type { LintResult } from '../types';
+
+const VALID_MODIFIERS = new Set(modifierData.valid);
 
 interface ArgSchema {
   name: string;
@@ -384,6 +387,34 @@ export function detectMissingSnippetSeparator(raw: string): LintResult | null {
     }
   }
   return null;
+}
+
+/** True if `rest` reads as a network option list (comma-separated known modifiers, no spaces) */
+function looksLikeNetworkOptions(rest: string): boolean {
+  if (/\s/.test(rest)) return false;
+  return rest.split(',').every(tok => VALID_MODIFIERS.has(tok.replace(/^~/, '').split('=')[0]));
+}
+
+/** Detect a network-classified line using a mangled "#$#" snippet separator (e.g. "$#", "#$") */
+export function detectMalformedSnippetSeparator(raw: string): LintResult | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.startsWith('!') || trimmed.startsWith('@@')) return null;
+
+  // <domain-list><run of # and $ containing at least one $><rest>
+  const m = /^(~?[a-zA-Z0-9*-]+(?:\.[a-zA-Z0-9*-]+)+(?:,~?[a-zA-Z0-9*-]+(?:\.[a-zA-Z0-9*-]+)+)*)([#$]*\$[#$]*)(.+)$/.exec(trimmed);
+  if (!m) return null;
+
+  const [, domainPart, sep, rest] = m;
+  if (sep === '#$#' || !sep.includes('#')) return null;
+  // "example.com#$script": trailing "#" is a literal pattern char, "$script" is real options.
+  if (sep === '#$' && looksLikeNetworkOptions(rest)) return null;
+
+  return {
+    message: `Malformed snippet separator "${sep}" — did you mean "${domainPart}#$#${rest}"?`,
+    severity: 'warning',
+    startCol: 0,
+    endCol: trimmed.length,
+  };
 }
 
 /** Validate race block structure across a full snippet chain */

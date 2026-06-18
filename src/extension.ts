@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
@@ -118,6 +118,8 @@ export function activate(context: vscode.ExtensionContext) {
         if (parsed.type === 'network') {
           const missingSep = detectMissingSnippetSeparator(parsed.raw);
           if (missingSep) results.push(missingSep);
+          const malformedSep = detectMalformedSnippetSeparator(parsed.raw);
+          if (malformedSep) results.push(malformedSep);
         }
       }
 

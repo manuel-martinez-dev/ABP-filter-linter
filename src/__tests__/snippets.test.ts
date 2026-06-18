@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
@@ -327,6 +327,64 @@ describe('detectMissingSnippetSeparator', () => {
 
   it('does not flag lines with proper #$# separator', () => {
     expect(detectMissingSnippetSeparator('example.com#$#log Hello')).toBeNull();
+  });
+});
+
+describe('detectMalformedSnippetSeparator', () => {
+  it('detects "$#" (missing leading #)', () => {
+    const result = detectMalformedSnippetSeparator('example.com$#some-snippet arg1 arg2');
+    expect(result).not.toBeNull();
+    expect(result!.message).toContain('example.com#$#some-snippet arg1 arg2');
+  });
+
+  it('detects "#$" (missing trailing #)', () => {
+    const result = detectMalformedSnippetSeparator('example.com#$some-snippet arg1 arg2');
+    expect(result).not.toBeNull();
+    expect(result!.message).toContain('example.com#$#some-snippet arg1 arg2');
+  });
+
+  it('fires on shape even when the snippet name is unknown', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$totally-misspelled args')).not.toBeNull();
+  });
+
+  it('handles comma-separated and wildcard-TLD domains', () => {
+    expect(detectMalformedSnippetSeparator('foo.example.com,bar.*$#do-thing x')).not.toBeNull();
+  });
+
+  it('does not flag a valid bare-"$" network rule', () => {
+    expect(detectMalformedSnippetSeparator('example.com$script')).toBeNull();
+  });
+
+  it('does not flag anchored network rules', () => {
+    expect(detectMalformedSnippetSeparator('||ads.example.com^$script')).toBeNull();
+  });
+
+  it('does not flag a correct #$# separator', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$#some-snippet arg')).toBeNull();
+  });
+
+  it('does not flag a cosmetic rule (no $ in the run)', () => {
+    expect(detectMalformedSnippetSeparator('example.com##.ad')).toBeNull();
+  });
+
+  it('does not flag a network rule whose pattern ends in "#" before options', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$script')).toBeNull();
+  });
+
+  it('does not flag a multi-modifier list after "#$"', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$third-party,script')).toBeNull();
+  });
+
+  it('does not flag a negated modifier after "#$"', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$~third-party')).toBeNull();
+  });
+
+  it('still flags "#$" + a snippet name that is not a modifier', () => {
+    expect(detectMalformedSnippetSeparator('example.com#$debug')).not.toBeNull();
+  });
+
+  it('still flags "$#" even when followed by a modifier name', () => {
+    expect(detectMalformedSnippetSeparator('example.com$#script')).not.toBeNull();
   });
 });
 
