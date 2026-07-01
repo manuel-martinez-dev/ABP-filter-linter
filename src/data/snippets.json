@@ -408,6 +408,23 @@
         {
           "name": "selector",
           "required": false
+        },
+        {
+          "name": "clearRectBehavior",
+          "required": false,
+          "enum": [
+            "",
+            "always",
+            "never"
+          ]
+        },
+        {
+          "name": "mode",
+          "required": false,
+          "enum": [
+            "",
+            "data"
+          ]
         }
       ]
     },

@@ -133,6 +133,30 @@ describe('json-override value enum', () => {
   });
 });
 
+describe('hide-if-canvas-contains clearRectBehavior + mode', () => {
+  it('accepts the 4-arg data mode form', () => {
+    const call = { name: 'hide-if-canvas-contains', args: ['/.{1000}/', 'parent-selector', '', 'data'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('accepts the 3-arg clearRectBehavior form', () => {
+    const call = { name: 'hide-if-canvas-contains', args: ['/ad-label/', '.canvas-parent', 'always'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('errors on an invalid mode value', () => {
+    const call = { name: 'hide-if-canvas-contains', args: ['/x/', '.p', '', 'bogus'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('bogus'))).toBe(true);
+  });
+
+  it('parses and accepts the real release-note example end-to-end', () => {
+    const calls = splitSnippetChain("hide-if-canvas-contains /.{1000}/ 'parent-selector' '' data");
+    expect(calls[0].args).toEqual(['/.{1000}/', 'parent-selector', '', 'data']);
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+});
+
 describe('max arg count', () => {
   it('warns when simulate-mouse-event exceeds 7 selectors', () => {
     const call = {
