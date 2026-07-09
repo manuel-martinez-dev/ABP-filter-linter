@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
@@ -25,6 +25,12 @@ describe('splitSnippetChain arg parsing', () => {
 
   it('splits args on tab characters', () => {
     expect(splitSnippetChain('log foo\tbar\tbaz')[0].args).toEqual(['foo', 'bar', 'baz']);
+  });
+
+  it('does not split on ; inside a tab-delimited regex arg', () => {
+    const calls = splitSnippetChain('abort-on-property-read Math\t/break;case/');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toEqual(['Math', '/break;case/']);
   });
 });
 
@@ -496,5 +502,125 @@ describe('race winners validation', () => {
 
   it('does not validate winners on race stop', () => {
     expect(validateSnippetCall({ name: 'race', args: ['stop'], nameOffset: 0 }, 0)).toHaveLength(0);
+  });
+});
+
+describe('nested snippet call in argument', () => {
+  it('warns when an arg is a pasted snippet call', () => {
+    const calls = splitSnippetChain(
+      `hide-if-matches-xpath 'hide-if-matches-xpath './/div[@class="foo"]/ancestor::li[1]''`
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args[0]).toBe('hide-if-matches-xpath ');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('nested "hide-if-matches-xpath"'))).toBe(true);
+  });
+
+  it('warns when a call repeats its own name as an argument', () => {
+    const call = { name: 'abort-current-inline-script', args: ['abort-current-inline-script'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.message.includes('nested "abort-current-inline-script"'))).toBe(true);
+  });
+
+  it('warns when a different known snippet is pasted as an argument', () => {
+    const call = { name: 'hide-if-contains', args: ['json-prune foo.bar', 'div'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.message.includes('nested "json-prune"'))).toBe(true);
+  });
+
+  it('warns when a deprecated snippet name is pasted as an argument', () => {
+    const call = { name: 'hide-if-contains', args: ['simulate-event-poc click', 'div'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.message.includes('nested "simulate-event-poc"'))).toBe(true);
+  });
+
+  it('does not warn on short non-hyphen names in text args', () => {
+    const call = { name: 'hide-if-contains', args: ['log in', 'div'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not warn when the name is not at the start of the arg', () => {
+    const call = { name: 'hide-if-contains', args: ['my hide-if-contains note', 'div'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not warn when the name is a prefix of a longer word', () => {
+    const call = { name: 'hide-if-contains', args: ['json-pruner', 'div'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('does not flag free-text args of debugging snippets', () => {
+    const results = validateSnippetCall({ name: 'log', args: ['json-prune', 'failed'], nameOffset: 0 }, 0);
+    expect(results.some(r => r.message.includes('nested'))).toBe(false);
+    expect(results.some(r => r.message.includes('live list'))).toBe(true);
+  });
+});
+
+describe('validateSnippetBody — misplaced quotes', () => {
+  it('warns twice on a nested-call quoting mangle', () => {
+    const results = validateSnippetBody(
+      `hide-if-matches-xpath 'hide-if-matches-xpath './/div[@class="foo"]/ancestor::li[1]''`, 0
+    );
+    const midToken = results.filter(r => r.message.includes('middle of an argument'));
+    expect(midToken).toHaveLength(2);
+    expect(results.some(r => r.message.includes('Unclosed'))).toBe(false);
+  });
+
+  it('does not warn on clean quoting', () => {
+    expect(validateSnippetBody("hide-if-contains 'some text' div", 0)).toHaveLength(0);
+  });
+
+  it("does not warn on standalone '' empty arg", () => {
+    expect(validateSnippetBody("override-property-read foo ''", 0)).toHaveLength(0);
+  });
+
+  it('does not warn on quotes adjacent to semicolons', () => {
+    expect(validateSnippetBody("abort-current-inline-script doc 'break;case'; log 'x'", 0)).toHaveLength(0);
+  });
+
+  it('ignores escaped quotes', () => {
+    expect(validateSnippetBody("log it\\'s fine", 0)).toHaveLength(0);
+  });
+
+  it('ignores quotes inside regex args (no false unclosed warning)', () => {
+    expect(validateSnippetBody("hide-if-contains /don't/ div", 0)).toHaveLength(0);
+  });
+
+  it('ignores quotes inside tab-delimited regex args', () => {
+    expect(validateSnippetBody("hide-if-contains\t/don't/\tdiv", 0)).toHaveLength(0);
+  });
+
+  it('warns when an opening quote follows an escaped space', () => {
+    const results = validateSnippetBody("log foo\\ 'bar'", 0);
+    expect(results.filter(r => r.message.includes('middle of an argument'))).toHaveLength(1);
+  });
+
+  it('does not warn on escaped spaces without quotes', () => {
+    expect(validateSnippetBody('log foo\\ bar', 0)).toHaveLength(0);
+  });
+});
+
+describe('detectDuplicateCalls', () => {
+  it('warns on identical call repeated in one chain', () => {
+    const calls = splitSnippetChain('json-prune foo.bar; json-prune foo.bar');
+    const results = detectDuplicateCalls(calls, 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('warning');
+    expect(results[0].message).toContain('json-prune');
+  });
+
+  it('does not warn on same snippet with different args', () => {
+    const calls = splitSnippetChain("hide-if-matches-xpath './/a'; hide-if-matches-xpath './/b'");
+    expect(detectDuplicateCalls(calls, 0)).toHaveLength(0);
+  });
+
+  it('never flags race start/stop pairs', () => {
+    const calls = splitSnippetChain('race start; log a; race stop; race start; log b; race stop');
+    expect(detectDuplicateCalls(calls, 0)).toHaveLength(0);
+  });
+
+  it('does not conflate arg boundaries when keying', () => {
+    const calls = splitSnippetChain("log 'a b'; log a b");
+    expect(detectDuplicateCalls(calls, 0)).toHaveLength(0);
   });
 });

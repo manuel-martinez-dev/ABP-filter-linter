@@ -23,6 +23,19 @@ interface SnippetSchema {
 const SNIPPETS = snippetData.snippets as Record<string, SnippetSchema>;
 const DEPRECATED = snippetData.deprecated as Record<string, string>;
 
+/** Hyphenated names only — short ones (log, race, …) collide with legit text args */
+const NESTABLE_NAMES = [...Object.keys(SNIPPETS), ...Object.keys(DEPRECATED)].filter(n => n.includes('-'));
+
+/** Snippet name at the start of an arg value = likely a call pasted inside quotes */
+function findNestedSnippetName(argVal: string): string | null {
+  const trimmed = argVal.trimStart();
+  for (const name of NESTABLE_NAMES) {
+    if (trimmed === name) return name;
+    if (trimmed.startsWith(name) && /[ \t]/.test(trimmed[name.length])) return name;
+  }
+  return null;
+}
+
 export function isPassiveSnippet(name: string): boolean {
   return name.startsWith('log-if-');
 }
@@ -148,23 +161,57 @@ export interface SnippetCall {
   nameOffset: number;
 }
 
+const isBoundary = (ch: string | undefined) =>
+  ch === undefined || ch === ' ' || ch === '\t' || ch === ';';
+
+interface BodyScanHandlers {
+  escape?: (i: number) => void;
+  quoteOpen?: (i: number) => void;
+  quoteClose?: (i: number) => void;
+  regexChar?: (i: number) => void;
+  separator?: (i: number) => void;
+  char?: (i: number) => void;
+}
+
+/** Shared escape/quote/regex walker; parseSnippetArgsDetailed stays separate (value-position regex entry, merges adjacent runs) */
+function scanBody(body: string, on: BodyScanHandlers): { inQuote: boolean; quoteStart: number } {
+  let inQuote = false;
+  let inRegex = false;
+  let quoteStart = -1;
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\\' && i + 1 < body.length) { on.escape?.(i); i++; continue; }
+    if (inRegex) {
+      if (ch === '/') inRegex = false;
+      on.regexChar?.(i);
+      continue;
+    }
+    if (ch === "'") {
+      if (!inQuote) { inQuote = true; quoteStart = i; on.quoteOpen?.(i); }
+      else { inQuote = false; quoteStart = -1; on.quoteClose?.(i); }
+      continue;
+    }
+    if (ch === ';' && !inQuote) { on.separator?.(i); continue; }
+    if (ch === '/' && !inQuote && isBoundary(body[i - 1])) { inRegex = true; on.regexChar?.(i); continue; }
+    on.char?.(i);
+  }
+
+  return { inQuote, quoteStart };
+}
+
 /** Split a snippet filter body (after #$#) by `;` respecting single-quoted strings */
 export function splitSnippetChain(body: string): SnippetCall[] {
   const parts: string[] = [];
   let current = '';
-  let inQuote = false;
-  let inRegex = false;
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
-    if (ch === '\\' && i + 1 < body.length) { current += ch + body[i + 1]; i++; continue; }
-    if (ch === "'" && !inQuote && !inRegex) { inQuote = true; current += ch; continue; }
-    if (ch === "'" && inQuote) { inQuote = false; current += ch; continue; }
-    const prevCh = i > 0 ? body[i - 1] : ' ';
-    if (ch === '/' && !inQuote && !inRegex && (prevCh === ' ' || prevCh === ';')) { inRegex = true; current += ch; continue; }
-    if (ch === '/' && inRegex) { inRegex = false; current += ch; continue; }
-    if (ch === ';' && !inQuote && !inRegex) { parts.push(current); current = ''; continue; }
-    current += ch;
-  }
+  scanBody(body, {
+    escape: i => { current += body[i] + body[i + 1]; },
+    quoteOpen: i => { current += body[i]; },
+    quoteClose: i => { current += body[i]; },
+    regexChar: i => { current += body[i]; },
+    separator: () => { parts.push(current); current = ''; },
+    char: i => { current += body[i]; },
+  });
   if (current.length > 0) parts.push(current);
 
   const calls: SnippetCall[] = [];
@@ -321,6 +368,31 @@ export function validateSnippetCall(
     if (!call.argOffsets) argSearchOffset += argVal.length + 1;
   }
 
+  // Nested snippet call pasted into an argument (checks every arg, not just schema slots).
+  // Debugging snippets take free text / log-filter patterns, so their args are exempt.
+  if (schema.category !== 'debugging') {
+    let nestedSearchOffset = bodyOffset + nameOffset + name.length + 1;
+    for (let i = 0; i < args.length; i++) {
+      const argVal = args[i];
+      const nested = findNestedSnippetName(argVal);
+      if (nested) {
+        const argStart = call.argOffsets?.[i] !== undefined
+          ? bodyOffset + call.argOffsets[i].start
+          : nestedSearchOffset;
+        const argEnd = call.argOffsets?.[i] !== undefined
+          ? bodyOffset + call.argOffsets[i].end
+          : nestedSearchOffset + argVal.length;
+        results.push({
+          message: `Argument looks like a nested "${nested}" snippet call — check quoting`,
+          severity: 'warning',
+          startCol: argStart,
+          endCol: argEnd,
+        });
+      }
+      nestedSearchOffset += argVal.length + 1;
+    }
+  }
+
   // Race winners must be a positive integer
   if (name === 'race' && args[0] === 'start' && args.length > 1) {
     if (!/^\d+$/.test(args[1]) || parseInt(args[1], 10) < 1) {
@@ -336,20 +408,25 @@ export function validateSnippetCall(
   return results;
 }
 
-/** Check for unclosed single quotes in a snippet chain body */
+/** Check quote sanity in a snippet chain body: unclosed quotes and quotes opening/closing mid-token */
 export function validateSnippetBody(body: string, bodyOffset: number): LintResult[] {
   const results: LintResult[] = [];
-  let inQuote = false;
-  let quoteStart = -1;
+  let escapedAt = -1; // escaped chars are literal content, not boundaries
 
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
-    if (ch === '\\' && i + 1 < body.length) { i++; continue; }
-    if (ch === "'") {
-      if (!inQuote) { inQuote = true; quoteStart = i; }
-      else { inQuote = false; quoteStart = -1; }
-    }
-  }
+  const midToken = (i: number) => {
+    results.push({
+      message: 'Quote in the middle of an argument — arguments should be fully quoted',
+      severity: 'warning',
+      startCol: bodyOffset + i,
+      endCol: bodyOffset + i + 1,
+    });
+  };
+
+  const { inQuote, quoteStart } = scanBody(body, {
+    escape: i => { escapedAt = i + 1; },
+    quoteOpen: i => { if (!isBoundary(body[i - 1]) || escapedAt === i - 1) midToken(i); },
+    quoteClose: i => { if (!isBoundary(body[i + 1])) midToken(i); },
+  });
 
   if (inQuote) {
     results.push({
@@ -358,6 +435,30 @@ export function validateSnippetBody(body: string, bodyOffset: number): LintResul
       startCol: bodyOffset + quoteStart,
       endCol: bodyOffset + body.length,
     });
+  }
+
+  return results;
+}
+
+/** Warn on identical calls (same name + args) repeated within one chain; race start/stop is structural */
+export function detectDuplicateCalls(calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+  const seen = new Set<string>();
+
+  for (const call of calls) {
+    if (call.name === 'race') continue;
+    const key = call.name + '\x00' + call.args.join('\x00');
+    if (seen.has(key)) {
+      const abs = bodyOffset + call.nameOffset;
+      results.push({
+        message: `Duplicate snippet call — identical "${call.name}" call already appears in this filter`,
+        severity: 'warning',
+        startCol: abs,
+        endCol: abs + call.name.length,
+      });
+    } else {
+      seen.add(key);
+    }
   }
 
   return results;

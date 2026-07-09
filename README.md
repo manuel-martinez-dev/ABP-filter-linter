@@ -10,10 +10,10 @@ Search for **ABP Filter Linter** in the VS Code Extensions panel, or use Quick O
 ext install manuel-martinez-dev.abp-filter-linter
 ```
 
-Alternatively, download `abp-filter-linter-0.7.4.vsix` from the repository and install manually:
+Alternatively, download `abp-filter-linter-0.8.0.vsix` from the repository and install manually:
 
 ```bash
-code --install-extension abp-filter-linter-0.7.4.vsix
+code --install-extension abp-filter-linter-0.8.0.vsix
 ```
 
 ## Features
@@ -25,7 +25,8 @@ code --install-extension abp-filter-linter-0.7.4.vsix
 - Network modifier compatibility checks
 - CSS selector validation for `##` rules
 - CSS selector and ABP pseudo-class validation for `#?#` rules
-- Duplicate filter detection
+- Copy-paste mangle detection: snippet calls pasted inside another call's arguments, and quotes opening or closing mid-argument
+- Duplicate filter detection, including identical snippet calls repeated within one filter
 - Only activates on `.txt` files
 
 ## Supported Filter Types

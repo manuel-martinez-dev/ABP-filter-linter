@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
 import { validateNetworkRule } from './validators/network';
 import { validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
@@ -106,6 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         results.push(...validateSnippetChain(calls, parsed.bodyOffset));
+        results.push(...detectDuplicateCalls(calls, parsed.bodyOffset));
         for (const call of calls) {
           results.push(...validateSnippetCall(call, parsed.bodyOffset));
         }
