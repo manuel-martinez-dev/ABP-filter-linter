@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectDoubleComma, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from '../validators/syntax';
+import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from '../validators/syntax';
 import { parseLine } from '../parser';
 
 describe('detectDoubleComma', () => {
@@ -203,5 +203,69 @@ describe('buildDuplicateKey', () => {
 
   it('returns null for multi-snippet chains (deliberately skipped)', () => {
     expect(key('a.com#$#log a; log b')).toBeNull();
+  });
+});
+
+describe('detectDomainListEdges', () => {
+  it('returns null for a clean domain list', () => {
+    expect(detectDomainListEdges('example.com,other.example##.ad')).toBeNull();
+  });
+
+  it('returns null for a generic filter with no domains', () => {
+    expect(detectDomainListEdges('##.ad-banner')).toBeNull();
+  });
+
+  it('returns null for negated domains', () => {
+    expect(detectDomainListEdges('~example.com##.ad')).toBeNull();
+  });
+
+  it('flags a trailing comma before the separator', () => {
+    const result = detectDomainListEdges('example.com,other.example,#$#log x');
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe('error');
+    expect(result!.startCol).toBe(25);
+    expect(result!.endCol).toBe(26);
+  });
+
+  it('flags a leading comma', () => {
+    const result = detectDomainListEdges(',example.com##.ad');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(0);
+  });
+
+  it('flags a bare ~ entry between domains', () => {
+    const result = detectDomainListEdges('example.com,~,other.example##.ad');
+    expect(result).not.toBeNull();
+    expect(result!.message).toContain('~');
+  });
+
+  it('flags a lone ~ as the whole domain list', () => {
+    expect(detectDomainListEdges('~##.ad')).not.toBeNull();
+  });
+
+  it('flags a trailing ~ entry', () => {
+    expect(detectDomainListEdges('example.com,~#?#div:-abp-has(.ad)')).not.toBeNull();
+  });
+
+  it('leaves ,, runs to detectDoubleComma', () => {
+    expect(detectDomainListEdges('example.com,,other.example##.ad')).toBeNull();
+    expect(detectDomainListEdges(',,example.com##.ad')).toBeNull();
+  });
+
+  it('returns null for network rules without a content separator', () => {
+    expect(detectDomainListEdges('||ads.example.com^$script')).toBeNull();
+  });
+
+  it('returns null for exception rules with ",#" sequences in the pattern', () => {
+    expect(detectDomainListEdges('@@/ads,##/$image')).toBeNull();
+    expect(detectDomainListEdges('@@||example.com/banner,##300.gif')).toBeNull();
+  });
+
+  it('returns null for regex network rules with ",#" sequences', () => {
+    expect(detectDomainListEdges('/ads,##/$image')).toBeNull();
+  });
+
+  it('returns null for |-anchored network rules with ",#" sequences', () => {
+    expect(detectDomainListEdges('||example.com/a,##b^$script')).toBeNull();
   });
 });

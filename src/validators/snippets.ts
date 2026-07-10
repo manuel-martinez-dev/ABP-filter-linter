@@ -37,7 +37,7 @@ function findNestedSnippetName(argVal: string): string | null {
 }
 
 export function isPassiveSnippet(name: string): boolean {
-  return name.startsWith('log-if-');
+  return name.startsWith('log-if-') || name === 'race';
 }
 
 export function snippetChainRequiresDomain(calls: SnippetCall[]): boolean {

@@ -65,6 +65,30 @@ export function detectDoubleComma(line: string): LintResult | null {
   return null;
 }
 
+/** Empty or "~"-only entries in a content-filter domain list */
+export function detectDomainListEdges(line: string): LintResult | null {
+  const trimmed = line.trimStart();
+  // @@, |, and /regex/ lines are network rules — a "#<sep>" there is pattern text, not a separator
+  if (trimmed.startsWith('@@') || trimmed.startsWith('|') || trimmed.startsWith('/')) return null;
+  const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
+  if (!sepMatch || sepMatch.index === undefined) return null;
+  const domainPart = line.slice(0, sepMatch.index);
+  if (!domainPart) return null;
+
+  const m = /(^|,)~?(,|$)/.exec(domainPart);
+  if (!m || m.index === undefined) return null;
+  // ",," runs belong to detectDoubleComma
+  if (m[0] === ',,') return null;
+  if (m[0].endsWith(',') && domainPart[m.index + m[0].length] === ',') return null;
+
+  return {
+    message: 'Empty or "~"-only entry in domain list',
+    severity: 'error',
+    startCol: m.index,
+    endCol: m.index + m[0].length,
+  };
+}
+
 export function detectTrailingWhitespace(line: string): LintResult | null {
   if (!line.trim()) return null;
   const trimmed = line.trimEnd();

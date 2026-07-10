@@ -18,6 +18,13 @@ describe('validateExtendedSelector', () => {
     expect(await validateExtendedSelector('div:xpath(//div[@class="ad"])', 0)).toHaveLength(0);
   });
 
+  it('errors on selector starting with @', async () => {
+    const results = await validateExtendedSelector('@div:-abp-has(.ad)', 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('@');
+  });
+
   it('errors on unknown :-abp-* pseudo-class', async () => {
     const results = await validateExtendedSelector('div:-abp-unknown(.ad)', 0);
     expect(results).toHaveLength(1);

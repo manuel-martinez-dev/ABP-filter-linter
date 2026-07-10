@@ -36,14 +36,49 @@
     "domain",
     "rewrite",
     "header",
-    "addheader"
+    "addheader",
+    "sitekey"
+  ],
+  "valueOptionalOnException": [
+    "csp",
+    "header"
   ],
   "rewritePrefix": "abp-resource:",
+  "rewriteResources": [
+    "blank-text",
+    "blank-css",
+    "blank-js",
+    "blank-html",
+    "blank-mp3",
+    "blank-mp4",
+    "1x1-transparent-gif",
+    "2x2-transparent-png",
+    "3x2-transparent-png",
+    "32x32-transparent-png"
+  ],
   "exceptionOnly": [
     "document",
     "elemhide",
     "generichide",
     "genericblock"
+  ],
+  "blockingOnly": [
+    "addheader"
+  ],
+  "mv3Unsupported": [
+    "header",
+    "sitekey"
+  ],
+  "forbiddenAddheaderNames": [
+    "x-content-type-options",
+    "x-download-options",
+    "x-frame-options",
+    "x-permitted-cross-domain-policies",
+    "x-powered-by",
+    "x-xss-protection"
+  ],
+  "privilegedAddheaderNames": [
+    "set-cookie"
   ],
   "contentTypes": [
     "script",

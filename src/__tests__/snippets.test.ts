@@ -483,6 +483,20 @@ describe('snippetChainRequiresDomain', () => {
     const calls = splitSnippetChain('log-if-selector-exists .ad; log-if-selector-exists .banner');
     expect(snippetChainRequiresDomain(calls)).toBe(false);
   });
+
+  it('does not require domain for race-wrapped log-if chain (ABP monitoring-only rule)', () => {
+    const calls = splitSnippetChain('race start; log-if-selector-exists tel1 .ad-slot; log-if-script-loads tel2 /ads/; race stop');
+    expect(snippetChainRequiresDomain(calls)).toBe(false);
+  });
+
+  it('treats race itself as passive', () => {
+    expect(isPassiveSnippet('race')).toBe(true);
+  });
+
+  it('still requires domain for race-wrapped behavioral chain', () => {
+    const calls = splitSnippetChain('race start; hide-if-contains Ad div; race stop');
+    expect(snippetChainRequiresDomain(calls)).toBe(true);
+  });
 });
 
 describe('race winners validation', () => {

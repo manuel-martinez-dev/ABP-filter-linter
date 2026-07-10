@@ -9,6 +9,17 @@ export function validateCosmeticSelector(
   const results: LintResult[] = [];
   if (!selector.trim()) return results;
 
+  const leadingWs = selector.length - selector.trimStart().length;
+  if (selector[leadingWs] === '@') {
+    results.push({
+      message: 'Selector cannot start with "@"',
+      severity: 'error',
+      startCol: bodyOffset + leadingWs,
+      endCol: bodyOffset + selector.length,
+    });
+    return results;
+  }
+
   const { selectorPart: stripped, actionContent, blockStart } = findActionBlock(selector);
   if (blockStart !== -1 && actionContent !== null) {
     if (!actionContent) {

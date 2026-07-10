@@ -16,6 +16,19 @@ describe('validateCosmeticSelector', () => {
     expect(results[0].message).toContain('Malformed CSS selector');
   });
 
+  it('errors on selector starting with @', async () => {
+    const results = await validateCosmeticSelector('@media screen', 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('@');
+  });
+
+  it('reports correct range for @ selector with leading whitespace', async () => {
+    const results = await validateCosmeticSelector('  @.ad', 5);
+    expect(results[0].startCol).toBe(7);
+    expect(results[0].endCol).toBe(11);
+  });
+
   it('passes with { remove: true; } action', async () => {
     expect(await validateCosmeticSelector('.ad { remove: true; }', 0)).toHaveLength(0);
   });

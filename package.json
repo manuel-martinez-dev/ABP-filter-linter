@@ -2,7 +2,7 @@
   "name": "abp-filter-linter",
   "displayName": "ABP Filter Linter",
   "description": "Validates Adblock Plus filter syntax in .txt files",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "manuel-martinez-dev",
   "repository": {
     "type": "git",
