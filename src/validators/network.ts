@@ -56,6 +56,20 @@ function validateAddheaderValue(value: string): string | null {
   return null;
 }
 
+/** filter_url_not_specific_enough: generic pattern (no domain=/sitekey=) must be ≥4 chars
+ *  (minus |/|| prefix) or contain "*" — ABP applies this to @@ exceptions and regex filters too */
+function checkPatternSpecificity(pattern: string, bodyOffset: number, results: LintResult[]): void {
+  const stripped = pattern.startsWith('||') ? pattern.slice(2)
+    : pattern.startsWith('|') ? pattern.slice(1) : pattern;
+  if (stripped.length >= 4 || stripped.includes('*')) return;
+  results.push({
+    message: 'Generic pattern too short — needs $domain= or $sitekey=, at least 4 characters, or a "*" wildcard',
+    severity: 'error',
+    startCol: bodyOffset,
+    endCol: bodyOffset + Math.max(pattern.length, 1),
+  });
+}
+
 // Option-list shape after "$" — looser than ABP core ([\w.*-], optional space after commas) so domain-like typos still get flagged
 const OPTIONS_RE = /^(.*)\$(~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*)$/;
 
@@ -74,7 +88,10 @@ export function validateNetworkRule(
   const results: LintResult[] = [];
 
   const dollarIdx = findOptionsSeparator(body);
-  if (dollarIdx === -1) return results;
+  if (dollarIdx === -1) {
+    checkPatternSpecificity(body, bodyOffset, results);
+    return results;
+  }
 
   const modifierStr = body.slice(dollarIdx + 1);
   const modifiers = modifierStr.split(',');
@@ -83,6 +100,7 @@ export function validateNetworkRule(
 
   // ~domain= counts too — ABP strips "~" before its option switch
   let hasDomainValue = false;
+  let hasSitekeyValue = false;
   let hasNegatedThirdParty = false;
   let hasRewrite = false;
 
@@ -156,6 +174,7 @@ export function validateNetworkRule(
     }
 
     if (key === 'domain' && value) hasDomainValue = true;
+    if (key === 'sitekey' && value) hasSitekeyValue = true;
     if (negated && key === 'third-party') hasNegatedThirdParty = true;
 
     // value required but missing
@@ -285,6 +304,10 @@ export function validateNetworkRule(
     }
 
     modifierNames.push(key);
+  }
+
+  if (!hasDomainValue && !hasSitekeyValue) {
+    checkPatternSpecificity(body.slice(0, dollarIdx), bodyOffset, results);
   }
 
   if (hasRewrite && !isException) {

@@ -11,6 +11,7 @@ interface ArgSchema {
   max?: number;
   enum?: string[];
   allowsNumericLiteral?: boolean;
+  numeric?: boolean;
 }
 
 interface SnippetSchema {
@@ -346,6 +347,16 @@ export function validateSnippetCall(
       }
     }
 
+    // Numeric-only args — the snippet source enforces /^\d+$/ and silently no-ops otherwise
+    if (argSchema.numeric && !/^\d+$/.test(argVal)) {
+      results.push({
+        message: `"${argSchema.name}" must be a non-negative integer, got "${argVal}"`,
+        severity: 'error',
+        startCol: argStart,
+        endCol: argEnd,
+      });
+    }
+
     // Demarcator validation
     if (demarcatorRules) {
       for (const rule of demarcatorRules) {
@@ -437,6 +448,37 @@ export function validateSnippetBody(body: string, bodyOffset: number): LintResul
     });
   }
 
+  return results;
+}
+
+/** Unquoted args starting with "/" (regex or bare xpath) containing spaces or ";":
+ *  ABP's tokenizer has no regex awareness — a space splits the argument and a ";"
+ *  ends the whole command — silent divergence from how this linter parses them */
+export function detectUnquotedRegexBreaks(body: string, calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+  if (!body.includes('/')) return results;
+  for (const call of calls) {
+    if (!call.argOffsets) continue;
+    for (const off of call.argOffsets) {
+      if (body[off.start] !== '/' || body[off.start - 1] === "'") continue;
+      const raw = body.slice(off.start, off.end);
+      let bare: ';' | ' ' | null = null;
+      for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === '\\') { i++; continue; }
+        if (raw[i] === ';') { bare = ';'; break; } // command split — worse than an arg split
+        if (raw[i] === ' ' || raw[i] === '\t') bare = ' ';
+      }
+      if (bare === null) continue;
+      results.push({
+        message: bare === ';'
+          ? 'ABP splits the snippet chain at an unquoted ";" (no regex awareness) — quote the argument or escape it'
+          : 'ABP splits unquoted arguments on spaces (no regex awareness) — quote the argument or escape the spaces',
+        severity: 'warning',
+        startCol: bodyOffset + off.start,
+        endCol: bodyOffset + off.end,
+      });
+    }
+  }
   return results;
 }
 

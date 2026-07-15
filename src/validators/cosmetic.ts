@@ -1,6 +1,21 @@
 import { parse } from 'css-what';
 import type { LintResult } from '../types';
-import { findActionBlock, validateActionCss } from './utils';
+import { findActionBlock, isRestrictedByDomain, validateActionCss } from './utils';
+
+/** filter_elemhide_not_specific_enough: generic ##/#@# body must be ≥3 raw chars (core checks untrimmed length) */
+export function checkGenericBodyLength(
+  domains: string[],
+  body: string,
+  bodyOffset: number
+): LintResult | null {
+  if (isRestrictedByDomain(domains) || body.length >= 3) return null;
+  return {
+    message: 'Generic content filter body must be at least 3 characters — add a domain or a longer selector',
+    severity: 'error',
+    startCol: bodyOffset,
+    endCol: bodyOffset + Math.max(body.length, 1),
+  };
+}
 
 export function validateCosmeticSelector(
   selector: string,

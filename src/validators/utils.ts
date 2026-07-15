@@ -1,5 +1,13 @@
 import type { LintResult } from '../types';
 
+/** ABP restrictedByDomain (core /,[^~][^,.]*\.[^,]/ on the raw list): at least one
+ *  non-negated entry with a dot that has a char before and after it, or exactly "localhost"
+ *  (case-sensitive — core tests the raw text, lowercasing happens later) */
+export function isRestrictedByDomain(domains: string[]): boolean {
+  return domains.some(d => !d.startsWith('~') &&
+    (/^.[^.]*\../.test(d) || d === 'localhost'));
+}
+
 export function findActionBlock(
   selector: string
 ): { selectorPart: string; actionContent: string | null; blockStart: number } {

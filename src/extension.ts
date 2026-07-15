@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, snippetChainRequiresDomain } from './validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, snippetChainRequiresDomain } from './validators/snippets';
+import { isRestrictedByDomain } from './validators/utils';
 import { validateNetworkRule } from './validators/network';
-import { validateCosmeticSelector } from './validators/cosmetic';
+import { checkGenericBodyLength, validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
 import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
@@ -79,13 +80,14 @@ export function activate(context: vscode.ExtensionContext) {
       const trailingWs = detectTrailingWhitespace(lines[i]);
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
-      // generic #@# exceptions are valid ABP syntax — only #?# requires a domain
-      if (parsed.type === 'extended' && parsed.domains.length === 0) {
+      // generic #@# exceptions are valid ABP syntax — only #?# requires a restricting domain
+      // (ABP restrictedByDomain: negated-only or dotless lists don't count)
+      if (parsed.type === 'extended' && !isRestrictedByDomain(parsed.domains)) {
         const sep = parsed.separator;
         const range = new vscode.Range(i, 0, i, lines[i].length);
         const diag = new vscode.Diagnostic(
           range,
-          `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+          `"${sep}" filter must have a non-negated domain with a dot (e.g. example.com${sep}...)`,
           vscode.DiagnosticSeverity.Error
         );
         diag.source = 'abp-filter-linter';
@@ -95,12 +97,12 @@ export function activate(context: vscode.ExtensionContext) {
       if (parsed.type === 'snippet') {
         const calls = splitSnippetChain(parsed.body);
 
-        if (parsed.domains.length === 0 && snippetChainRequiresDomain(calls)) {
+        if (!isRestrictedByDomain(parsed.domains) && snippetChainRequiresDomain(calls)) {
           const sep = parsed.separator;
           const range = new vscode.Range(i, 0, i, lines[i].length);
           const diag = new vscode.Diagnostic(
             range,
-            `"${sep}" filter must have a domain (e.g. example.com${sep}...)`,
+            `"${sep}" filter must have a non-negated domain with a dot (e.g. example.com${sep}...)`,
             vscode.DiagnosticSeverity.Error
           );
           diag.source = 'abp-filter-linter';
@@ -110,6 +112,7 @@ export function activate(context: vscode.ExtensionContext) {
         results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
         results.push(...validateSnippetChain(calls, parsed.bodyOffset));
         results.push(...detectDuplicateCalls(calls, parsed.bodyOffset));
+        results.push(...detectUnquotedRegexBreaks(parsed.body, calls, parsed.bodyOffset));
         for (const call of calls) {
           results.push(...validateSnippetCall(call, parsed.bodyOffset));
         }
@@ -128,6 +131,8 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (parsed.type === 'cosmetic' || parsed.type === 'hiding-exception') {
+        const tooGeneric = checkGenericBodyLength(parsed.domains, parsed.body, parsed.bodyOffset);
+        if (tooGeneric) results.push(tooGeneric);
         results.push(...validateCosmeticSelector(parsed.body, parsed.bodyOffset));
       }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCosmeticSelector } from '../validators/cosmetic';
+import { checkGenericBodyLength, validateCosmeticSelector } from '../validators/cosmetic';
 
 describe('validateCosmeticSelector', () => {
   it('returns no errors for a valid selector', async () => {
@@ -92,5 +92,35 @@ describe('validateCosmeticSelector', () => {
 
   it('does not warn when semicolon is inside url() value', async () => {
     expect(await validateCosmeticSelector("div { background-image: url('a;b.png') }", 0)).toHaveLength(0);
+  });
+});
+
+describe('checkGenericBodyLength (filter_elemhide_not_specific_enough)', () => {
+  it('errors on a generic 2-char body', () => {
+    const r = checkGenericBodyLength([], 'ad', 2);
+    expect(r).not.toBeNull();
+    expect(r!.severity).toBe('error');
+    expect(r!.startCol).toBe(2);
+    expect(r!.endCol).toBe(4);
+  });
+
+  it('errors on a generic hiding-exception short body (ABP applies it to #@# too)', () => {
+    expect(checkGenericBodyLength([], '.x', 3)).not.toBeNull();
+  });
+
+  it('accepts a generic 3-char body', () => {
+    expect(checkGenericBodyLength([], '.ad', 2)).toBeNull();
+  });
+
+  it('accepts a short body when a restricting domain is present', () => {
+    expect(checkGenericBodyLength(['example.com'], 'ad', 13)).toBeNull();
+  });
+
+  it('still errors when only a negated domain is present', () => {
+    expect(checkGenericBodyLength(['~example.com'], 'ad', 14)).not.toBeNull();
+  });
+
+  it('counts raw length like core (no trim)', () => {
+    expect(checkGenericBodyLength([], ' .a', 2)).toBeNull();
   });
 });

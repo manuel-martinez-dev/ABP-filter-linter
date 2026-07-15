@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
@@ -636,5 +636,101 @@ describe('detectDuplicateCalls', () => {
   it('does not conflate arg boundaries when keying', () => {
     const calls = splitSnippetChain("log 'a b'; log a b");
     expect(detectDuplicateCalls(calls, 0)).toHaveLength(0);
+  });
+});
+
+describe('numeric arg constraint (replace-argument argPosition)', () => {
+  it('accepts a non-negative integer argPosition', () => {
+    const call = { name: 'replace-argument', args: ['Element.prototype.setAttribute', '1'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('accepts the full five-argument form', () => {
+    const calls = splitSnippetChain("replace-argument Element.prototype.setAttribute 1 '/.+(x-param).+/' '' needle.js");
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('errors on non-numeric argPosition', () => {
+    const call = { name: 'replace-argument', args: ['foo.bar', 'baz'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('non-negative integer'))).toBe(true);
+  });
+
+  it('errors on negative argPosition', () => {
+    const call = { name: 'replace-argument', args: ['foo.bar', '-1'], nameOffset: 0 };
+    const results = validateSnippetCall(call, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('non-negative integer'))).toBe(true);
+  });
+
+  it('squiggle covers the offending arg when offsets are present', () => {
+    const body = 'replace-argument foo.bar baz';
+    const calls = splitSnippetChain(body);
+    const results = validateSnippetCall(calls[0], 0);
+    const err = results.find(r => r.message.includes('non-negative integer'));
+    expect(err).toBeDefined();
+    expect(err!.startCol).toBe(body.indexOf('baz'));
+    expect(err!.endCol).toBe(body.indexOf('baz') + 3);
+  });
+});
+
+describe('detectUnquotedRegexBreaks', () => {
+  const run = (body: string) => detectUnquotedRegexBreaks(body, splitSnippetChain(body), 0);
+
+  it('warns on unquoted regex containing a space', () => {
+    const body = 'hide-if-contains /Sponsored by/ div';
+    const results = run(body);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('warning');
+    expect(results[0].startCol).toBe(body.indexOf('/Sponsored'));
+    expect(results[0].endCol).toBe(body.indexOf('by/') + 3);
+  });
+
+  it('does not warn when the regex is quoted', () => {
+    expect(run("hide-if-contains '/Sponsored by/' div")).toHaveLength(0);
+  });
+
+  it('does not warn when the space is escaped', () => {
+    expect(run('hide-if-contains /Sponsored\\ by/ div')).toHaveLength(0);
+  });
+
+  it('does not warn on a spaceless regex', () => {
+    expect(run('hide-if-contains /Sponsored/ div')).toHaveLength(0);
+  });
+
+  it('does not warn when the slash arg has no internal space (xpath split matches ABP)', () => {
+    expect(run('hide-if-matches-xpath /foo/bar baz')).toHaveLength(0);
+  });
+
+  it('warns once per offending arg across a chain', () => {
+    const results = run('hide-if-contains /a b/ div; hide-if-contains /c d/ span');
+    expect(results).toHaveLength(2);
+  });
+
+  it('does not warn on ordinary quoted args with spaces', () => {
+    expect(run("hide-if-contains 'Sponsored by' div")).toHaveLength(0);
+  });
+});
+
+describe('detectUnquotedRegexBreaks: unquoted ";" inside slash args', () => {
+  const run = (body: string) => detectUnquotedRegexBreaks(body, splitSnippetChain(body), 0);
+
+  it('warns on unquoted regex containing ";" even without spaces', () => {
+    const results = run('abort-current-inline-script Math /break;case/');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('";"');
+  });
+
+  it('prefers the ";" message when both ";" and spaces are present', () => {
+    const results = run('abort-current-inline-script Math /break;case \$/');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('";"');
+  });
+
+  it('does not warn when the regex is quoted', () => {
+    expect(run("abort-current-inline-script Math '/break;case/'")).toHaveLength(0);
+  });
+
+  it('does not warn when the ";" is escaped', () => {
+    expect(run('abort-current-inline-script Math /break\\;case/')).toHaveLength(0);
   });
 });

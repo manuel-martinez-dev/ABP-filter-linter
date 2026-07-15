@@ -459,3 +459,63 @@ describe('findOptionsSeparator', () => {
     expect(findOptionsSeparator('||x.com^$script,,image')).toBe(-1);
   });
 });
+
+describe('generic pattern specificity (filter_url_not_specific_enough)', () => {
+  it('errors on short pattern with options but no domain=/sitekey=', () => {
+    const results = validateNetworkRule('ad$script', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('too short'))).toBe(true);
+  });
+
+  it('errors on short ||-anchored pattern', () => {
+    const results = validateNetworkRule('||ad^$script', false, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(true);
+  });
+
+  it('errors on short pattern without any options', () => {
+    const results = validateNetworkRule('|ads', false, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(true);
+  });
+
+  it('accepts short pattern with domain=', () => {
+    expect(validateNetworkRule('ads$script,domain=example.com', false, 0)).toHaveLength(0);
+  });
+
+  it('accepts short pattern with sitekey=', () => {
+    const results = validateNetworkRule('ads$sitekey=abcdef', true, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(false);
+  });
+
+  it('accepts short pattern containing a wildcard', () => {
+    expect(validateNetworkRule('ad*$script', false, 0)).toHaveLength(0);
+  });
+
+  it('accepts a pattern of exactly 4 chars', () => {
+    expect(validateNetworkRule('adsx$script', false, 0)).toHaveLength(0);
+  });
+
+  it('does not count the || prefix toward the 4-char minimum', () => {
+    const results = validateNetworkRule('||ads$script', false, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(true);
+  });
+
+  it('accepts a 4-char regex filter', () => {
+    expect(validateNetworkRule('/ad/', false, 0)).toHaveLength(0);
+  });
+
+  it('errors on a sub-4-char regex filter (ABP counts the slashes)', () => {
+    const results = validateNetworkRule('/a/', false, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(true);
+  });
+
+  it('errors on a short generic exception pattern (ABP applies the check to @@ too)', () => {
+    const results = validateNetworkRule('ad$script', true, 0);
+    expect(results.some(r => r.message.includes('too short'))).toBe(true);
+  });
+
+  it('squiggle covers the pattern part', () => {
+    const results = validateNetworkRule('ad$script', false, 5);
+    const err = results.find(r => r.message.includes('too short'));
+    expect(err!.startCol).toBe(5);
+    expect(err!.endCol).toBe(7);
+  });
+});
