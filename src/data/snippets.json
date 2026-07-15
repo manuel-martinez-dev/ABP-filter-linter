@@ -962,6 +962,31 @@
           "required": true
         }
       ]
+    },
+    "replace-argument": {
+      "since": "2.13.0",
+      "args": [
+        {
+          "name": "methodPath",
+          "required": true
+        },
+        {
+          "name": "argPosition",
+          "required": true
+        },
+        {
+          "name": "pattern",
+          "required": false
+        },
+        {
+          "name": "replacement",
+          "required": false
+        },
+        {
+          "name": "stackNeedle",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
