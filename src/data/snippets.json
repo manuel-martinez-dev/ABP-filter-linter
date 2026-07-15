@@ -991,6 +991,9 @@
     }
   },
   "deprecated": {
+    "log-if-script-loads": "Deprecated in @eyeo/snippets v2.10.0 — use log-if-element-loads",
+    "log-if-iframe-loads": "Deprecated in @eyeo/snippets v2.10.0 — use log-if-element-loads",
+    "log-if-anchor-href-matches": "Deprecated in @eyeo/snippets v2.10.0 — use log-if-element-loads",
     "simulate-event-poc": "Replaced by simulate-mouse-event",
     "hide-if-classifies": "Removed in @eyeo/snippets v2.0.0 — requires service worker backend",
     "hide-if-graph-matches": "Removed in @eyeo/snippets v0.9.0 — ML snippet requiring external dependency"

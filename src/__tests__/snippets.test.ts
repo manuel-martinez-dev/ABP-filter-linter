@@ -734,3 +734,22 @@ describe('detectUnquotedRegexBreaks: unquoted ";" inside slash args', () => {
     expect(run('abort-current-inline-script Math /break\\;case/')).toHaveLength(0);
   });
 });
+
+describe('log-if-* deprecations (@eyeo/snippets v2.10.0)', () => {
+  it.each(['log-if-script-loads', 'log-if-iframe-loads', 'log-if-anchor-href-matches'])(
+    'warns that %s is deprecated in favour of log-if-element-loads',
+    name => {
+      const results = validateSnippetCall({ name, args: ['/ads/', 'tel1'], nameOffset: 0 }, 0);
+      expect(results.some(r => r.severity === 'warning' && r.message.includes('log-if-element-loads'))).toBe(true);
+    }
+  );
+
+  it('does not warn on the log-if-element-loads replacement', () => {
+    const call = { name: 'log-if-element-loads', args: ['/ads/', 'tel1'], nameOffset: 0 };
+    expect(validateSnippetCall(call, 0)).toHaveLength(0);
+  });
+
+  it('deprecated log-if-* still count as passive for the domain gate', () => {
+    expect(isPassiveSnippet('log-if-script-loads')).toBe(true);
+  });
+});
