@@ -81,7 +81,6 @@ export function activate(context: vscode.ExtensionContext) {
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
       // generic #@# exceptions are valid ABP syntax — only #?# requires a restricting domain
-      // (ABP restrictedByDomain: negated-only or dotless lists don't count)
       if (parsed.type === 'extended' && !isRestrictedByDomain(parsed.domains)) {
         const sep = parsed.separator;
         const range = new vscode.Range(i, 0, i, lines[i].length);
