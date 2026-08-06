@@ -482,6 +482,53 @@ export function detectUnquotedRegexBreaks(body: string, calls: SnippetCall[], bo
   return results;
 }
 
+// adblockpluscore's singleCharacterEscapes only maps n/r/t; any other \X drops the backslash
+const LOST_ESCAPE_CLASS_CHARS = new Set(['s', 'S', 'd', 'D', 'w', 'W', 'b', 'B']);
+// excludes "/", "{", "}" — toRegExp() never sets the "u" flag, so those stay literal unescaped anyway
+const LOST_ESCAPE_METACHARS = new Set(['.', '^', '$', '*', '+', '?', '(', ')', '[', ']', '|']);
+
+// toRegExp()'s own shape test — quotes don't exempt an arg from it, since ABP strips them before
+// the snippet ever sees the value; only the space/";" tokenizer cares about quoting, not this
+function looksLikeRegexLiteral(raw: string): boolean {
+  if (raw.length < 2 || raw[0] !== '/') return false;
+  return raw[raw.length - 1] === '/' || (raw.length > 2 && raw.endsWith('/i'));
+}
+
+/** Regex-literal snippet args (quoted or not) where ABP's parser silently drops an unrecognized escape's backslash */
+export function detectLostRegexEscapes(body: string, calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+  if (!body.includes('\\')) return results;
+
+  for (const call of calls) {
+    if (!call.argOffsets) continue;
+    for (const off of call.argOffsets) {
+      const raw = body.slice(off.start, off.end);
+      if (!looksLikeRegexLiteral(raw)) continue;
+
+      for (let i = 0; i < raw.length; i++) {
+        if (raw[i] !== '\\' || i + 1 >= raw.length) continue;
+        const next = raw[i + 1];
+        const isClass = LOST_ESCAPE_CLASS_CHARS.has(next);
+        const isMeta = LOST_ESCAPE_METACHARS.has(next);
+        if (isClass || isMeta) {
+          const abs = bodyOffset + off.start + i;
+          results.push({
+            message: isClass
+              ? `Escaped "\\${next}" loses its backslash in ABP's snippet parser and becomes a literal "${next}" (regex class/boundary lost) — use "\\\\${next}" if that's intended`
+              : `Escaped "\\${next}" loses its backslash in ABP's snippet parser and "${next}" becomes a live regex metacharacter — use "\\\\${next}" for a literal "${next}"`,
+            severity: 'warning',
+            startCol: abs,
+            endCol: abs + 2,
+          });
+        }
+        i++; // consume the pair, mirroring ABP's own parser loop
+      }
+    }
+  }
+
+  return results;
+}
+
 /** Warn on identical calls (same name + args) repeated within one chain; race start/stop is structural */
 export function detectDuplicateCalls(calls: SnippetCall[], bodyOffset: number): LintResult[] {
   const results: LintResult[] = [];

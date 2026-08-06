@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
@@ -751,5 +751,57 @@ describe('log-if-* deprecations (@eyeo/snippets v2.10.0)', () => {
 
   it('deprecated log-if-* still count as passive for the domain gate', () => {
     expect(isPassiveSnippet('log-if-script-loads')).toBe(true);
+  });
+});
+
+describe('detectLostRegexEscapes', () => {
+  const run = (body: string) => detectLostRegexEscapes(body, splitSnippetChain(body), 0);
+
+  it('flags \\s and \\S inside a character class', () => {
+    const results = run('some-snippet /[\\s\\S]*/');
+    expect(results).toHaveLength(2);
+    expect(results.every(r => r.severity === 'warning')).toBe(true);
+  });
+
+  it('flags each \\. at its own column', () => {
+    const results = run('some-snippet /foo\\.bar\\.js/');
+    expect(results).toHaveLength(2);
+    expect(results[0].startCol).toBe(17);
+    expect(results[1].startCol).toBe(22);
+  });
+
+  it('flags \\. but not \\/ in the same arg', () => {
+    const results = run('some-snippet /\\/pop\\.js/');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('.');
+  });
+
+  it('finds the offset inside the second call of a chain', () => {
+    const results = run('log a; some-snippet /x\\.y/ sel');
+    expect(results).toHaveLength(1);
+    const body = 'log a; some-snippet /x\\.y/ sel';
+    expect(body.slice(results[0].startCol, results[0].endCol)).toBe('\\.');
+  });
+
+  it('does not flag an already-doubled backslash', () => {
+    expect(run('some-snippet /loader\\\\.min\\\\.js/')).toHaveLength(0);
+    expect(run('some-snippet /[\\\\s\\\\S]*/')).toHaveLength(0);
+  });
+
+  it('does not flag recognized escapes', () => {
+    expect(run('some-snippet /\\n\\r\\t\\\\/')).toHaveLength(0);
+  });
+
+  it('flags a regex-looking arg inside quotes too — quoting does not protect escapes', () => {
+    const results = run("some-snippet '/foo\\.bar/'");
+    expect(results).toHaveLength(1);
+  });
+
+  it('does not flag a quoted arg that merely starts with "/" but is not regex-shaped', () => {
+    expect(run("some-snippet '/foo\\.bar'")).toHaveLength(0);
+  });
+
+  it('does not crash on a trailing lone backslash', () => {
+    expect(() => run('some-snippet /foo\\')).not.toThrow();
   });
 });
