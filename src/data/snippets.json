@@ -988,6 +988,23 @@
           "required": false
         }
       ]
+    },
+    "prevent-window-open": {
+      "since": "2.14.0",
+      "args": [
+        {
+          "name": "pattern",
+          "required": false
+        },
+        {
+          "name": "delay",
+          "required": false
+        },
+        {
+          "name": "decoy",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
