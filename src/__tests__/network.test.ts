@@ -519,3 +519,105 @@ describe('generic pattern specificity (filter_url_not_specific_enough)', () => {
     expect(err!.endCol).toBe(7);
   });
 });
+
+describe('missing options separator', () => {
+  const flags = (body: string, isException = false) => {
+    const results = validateNetworkRule(body, isException, 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('looks like a filter option');
+    return results[0];
+  };
+
+  it('errors on a dropped $ before a single option', () => {
+    const err = flags('||aboveboardcomplicate.com^popup');
+    expect(err.message).toContain('"||aboveboardcomplicate.com^$popup"');
+  });
+
+  it('errors on a hyphenated option name', () => {
+    flags('||host.com^third-party');
+  });
+
+  it('errors on a multi-option tail', () => {
+    expect(flags('||host.com^script,image').message).toContain('"||host.com^$script,image"');
+  });
+
+  it('errors on a value-bearing option', () => {
+    flags('||host.com^domain=foo.com');
+  });
+
+  it('errors on a mixed tail', () => {
+    flags('||host.com^popup,third-party');
+  });
+
+  it('errors on exception rules and keeps @@ in the suggestion', () => {
+    expect(flags('||host.com^document', true).message).toContain('"@@||host.com^$document"');
+  });
+
+  it('drops space after commas in the suggestion', () => {
+    expect(flags('||host.com^script, image').message).toContain('"||host.com^$script,image"');
+  });
+
+  it('matches option names case-insensitively', () => {
+    flags('||host.com^Popup,THIRD-PARTY');
+  });
+
+  it('errors when a literal $ elsewhere is not an options separator', () => {
+    expect(flags('||host.com/a$b^popup').message).toContain('"||host.com/a$b^$popup"');
+  });
+
+  // the missing "$" is the defect; the remaining option errors surface once it is added
+  it('errors even when the suggested fix would still need a value', () => {
+    flags('||host.com^domain');
+  });
+
+  it('errors even when the suggested fix would be an incompatible pair', () => {
+    flags('||host.com^script,document');
+  });
+
+  it('squiggle covers the caret to end of body', () => {
+    const results = validateNetworkRule('||host.com^popup', false, 2);
+    expect(results).toHaveLength(1);
+    expect(results[0].startCol).toBe(12);
+    expect(results[0].endCol).toBe(18);
+  });
+
+  it('accepts a correct filter', () => {
+    expect(validateNetworkRule('||host.com^$popup', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores an explicit path with no caret', () => {
+    expect(validateNetworkRule('||host.com/popup', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores a tail that is not a known option name', () => {
+    expect(validateNetworkRule('||host.com^popupads.js', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores a tail where only some tokens are known', () => {
+    expect(validateNetworkRule('||host.com^abc,script', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores a bare separator', () => {
+    expect(validateNetworkRule('||host.com^', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores a wildcarded tail', () => {
+    expect(validateNetworkRule('||host.com^popup*', false, 0)).toHaveLength(0);
+  });
+
+  it('ignores regex filters', () => {
+    expect(validateNetworkRule('/banner\\d+^popup/', false, 0)).toHaveLength(0);
+    expect(findOptionsSeparator('/banner\\d+^popup/')).toBe(-1);
+  });
+
+  it('leaves the pattern-only specificity check untouched', () => {
+    const results = validateNetworkRule('||a^', false, 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('too short');
+  });
+
+  it('stays quiet on an ordinary blocking filter', () => {
+    expect(validateNetworkRule('||ads.example.com^', false, 0)).toHaveLength(0);
+  });
+});

@@ -70,14 +70,48 @@ function checkPatternSpecificity(pattern: string, bodyOffset: number, results: L
   });
 }
 
-// Option-list shape after "$" — looser than ABP core ([\w.*-], optional space after commas) so domain-like typos still get flagged
-const OPTIONS_RE = /^(.*)\$(~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*)$/;
+// Option-list shape — looser than ABP core ([\w.*-], optional space after commas) so domain-like typos still get flagged
+const OPTION_LIST = String.raw`~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*`;
+const OPTIONS_RE = new RegExp(String.raw`^(.*)\$(${OPTION_LIST})$`);
+const OPTION_TAIL_RE = new RegExp(String.raw`\^(${OPTION_LIST})$`);
+
+export function isRegexFilter(body: string): boolean {
+  return body.length > 1 && body.startsWith('/') && body.endsWith('/');
+}
 
 /** Last "$" counts as options separator only if the rest looks like an option list; -1 for regex filters and literal "$" */
 export function findOptionsSeparator(body: string): number {
-  if (body.length > 1 && body.startsWith('/') && body.endsWith('/')) return -1;
+  if (isRegexFilter(body)) return -1;
   const match = OPTIONS_RE.exec(body);
   return match ? match[1].length : -1;
+}
+
+/** A dropped "$" leaves a valid filter whose option names are matched as literal URL text */
+function checkMissingOptionSeparator(
+  body: string,
+  isException: boolean,
+  bodyOffset: number,
+  results: LintResult[]
+): void {
+  if (isRegexFilter(body)) return;
+  const m = OPTION_TAIL_RE.exec(body);
+  if (!m) return;
+  const names = m[1]
+    .split(',')
+    .map(s => s.trim().replace(/^~/, '').split('=')[0].toLowerCase());
+  if (!names.every(n => VALID.has(n))) return;
+  const caretIdx = body.length - m[0].length;
+  // parser strips "@@", so put it back or the suggestion turns an exception into a blocking rule
+  const prefix = isException ? '@@' : '';
+  const options = m[1].replace(/,[ \t]+/g, ',');
+  results.push({
+    message: `"${m[1]}" looks like a filter option but has no "$" — did you mean `
+      + `"${prefix}${body.slice(0, caretIdx + 1)}$${options}"? `
+      + `As written, "${m[1]}" is matched as literal URL text.`,
+    severity: 'error',
+    startCol: bodyOffset + caretIdx,
+    endCol: bodyOffset + body.length,
+  });
 }
 
 export function validateNetworkRule(
@@ -90,6 +124,7 @@ export function validateNetworkRule(
   const dollarIdx = findOptionsSeparator(body);
   if (dollarIdx === -1) {
     checkPatternSpecificity(body, bodyOffset, results);
+    checkMissingOptionSeparator(body, isException, bodyOffset, results);
     return results;
   }
 

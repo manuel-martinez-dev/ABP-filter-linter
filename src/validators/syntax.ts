@@ -1,6 +1,6 @@
 import type { LintResult } from '../types';
 import type { ParsedLine } from '../parser';
-import { findOptionsSeparator } from './network';
+import { findOptionsSeparator, isRegexFilter } from './network';
 
 export function detectSpacesInDomains(line: string): LintResult | null {
   // Cosmetic/snippet/extended/hiding-exception: check domain part before separator
@@ -51,7 +51,7 @@ export function detectDoubleComma(line: string): LintResult | null {
 
   // For network rules: only check options part (after $) — not the URL pattern
   let dollarIdx = findOptionsSeparator(line);
-  if (dollarIdx === -1 && !(line.length > 1 && line.startsWith('/') && line.endsWith('/'))) {
+  if (dollarIdx === -1 && !isRegexFilter(line)) {
     // malformed options (e.g. ",,") won't match the option shape — fall back to first "$"
     dollarIdx = line.indexOf('$');
   }
