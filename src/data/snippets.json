@@ -1005,6 +1005,27 @@
           "required": false
         }
       ]
+    },
+    "replace-fetch-request": {
+      "since": "2.15.0",
+      "args": [
+        {
+          "name": "search",
+          "required": true
+        },
+        {
+          "name": "replacement",
+          "required": false
+        },
+        {
+          "name": "needle",
+          "required": false
+        },
+        {
+          "name": "mode",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
