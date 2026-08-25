@@ -805,3 +805,106 @@ describe('detectLostRegexEscapes', () => {
     expect(() => run('some-snippet /foo\\')).not.toThrow();
   });
 });
+
+describe('schema drift fixes — previously flagged, now clean', () => {
+  it('allows event-override rewrite mode with property/pattern/replacement', () => {
+    const calls = splitSnippetChain('event-override message rewrite /_as_res/ data /_as_req$/ _as_res');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows event-override rewrite mode (second example)', () => {
+    const calls = splitSnippetChain('event-override click rewrite /h/ data /x/ y');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows hide-if-contains-similar-text with ignoreChars and maxSearches', () => {
+    const calls = splitSnippetChain("hide-if-contains-similar-text Sponsored .ad-box '' 2 5");
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('drops debug to exactly the debugging-snippet warning', () => {
+    const calls = splitSnippetChain('debug /adshield/');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('warning');
+    expect(results[0].message).toContain('live list');
+  });
+});
+
+describe('event-override rewrite-mode requirements', () => {
+  it('errors when rewrite mode is missing property and pattern', () => {
+    const calls = splitSnippetChain('event-override click rewrite');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('requires'))).toBe(true);
+  });
+
+  it('errors when rewrite mode has blank property and pattern (truthiness, not arg count)', () => {
+    const calls = splitSnippetChain("event-override click rewrite '' '' ''");
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('requires'))).toBe(true);
+  });
+
+  it('allows a blank needle as long as property and pattern are present', () => {
+    const calls = splitSnippetChain("event-override click rewrite '' data /x/");
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error')).toBe(false);
+  });
+
+  it('warns when trusted mode gets more than 3 arguments', () => {
+    const calls = splitSnippetChain('event-override click trusted a b c d');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('accepts at most 3'))).toBe(true);
+  });
+});
+
+describe('schema drift fixes — previously clean, now newly flagged', () => {
+  it('errors on invalid replace-fetch-request mode', () => {
+    const calls = splitSnippetChain("replace-fetch-request 'jsonpath($.tags)' x '' apppend");
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('apppend'))).toBe(true);
+  });
+
+  it('errors on invalid prevent-window-open decoy', () => {
+    const calls = splitSnippetChain('prevent-window-open /popunder/ 2000 nosuchdecoy');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('nosuchdecoy'))).toBe(true);
+  });
+
+  it('errors on case-mismatched prevent-window-open decoy', () => {
+    const calls = splitSnippetChain('prevent-window-open /popunder/ 2000 IFRAME');
+    const results = validateSnippetCall(calls[0], 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('IFRAME'))).toBe(true);
+  });
+});
+
+describe('schema drift fixes — regression guards', () => {
+  it('allows event-override trusted mode with no needle', () => {
+    const calls = splitSnippetChain('event-override click trusted');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows event-override disable mode with needle', () => {
+    const calls = splitSnippetChain('event-override visibilitychange disable /adHandler/');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows prevent-window-open with decoy obj', () => {
+    const calls = splitSnippetChain('prevent-window-open /popunder/ 2000 obj');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows prevent-window-open with only a pattern', () => {
+    const calls = splitSnippetChain('prevent-window-open /./');
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows replace-fetch-request with mode append', () => {
+    const calls = splitSnippetChain("replace-fetch-request 'jsonpath($.tags)' '\"blocked\"' '' append");
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+
+  it('allows hide-if-canvas-contains with mode data (unrelated snippet, sanity check)', () => {
+    const calls = splitSnippetChain("hide-if-canvas-contains /iVBOR/ '#ad' '' data");
+    expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+});

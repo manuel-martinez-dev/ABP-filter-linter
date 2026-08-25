@@ -28,9 +28,11 @@ jobs:
           output=$(node .github/scripts/check-snippets.mjs 2>&1)
           exit_code=$?
           set -e
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$output" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$output"
+          delimiter=$(openssl rand -hex 8)
+          echo "output<<$delimiter" >> "$GITHUB_OUTPUT"
+          echo "$output" >> "$GITHUB_OUTPUT"
+          echo "$delimiter" >> "$GITHUB_OUTPUT"
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
 
       - name: Open PR if new snippets found
@@ -51,7 +53,14 @@ jobs:
             - Verify `required` flags and fix any that are incorrect
             - Add any missing `enum` values (run `node .github/scripts/inspect-snippet.mjs <snippet-name>` locally to inspect the source)
             - Add special fields if needed (`category`, `noRace`, `max`, etc.)
+            - If the log above contains a `DRIFT_DETECTED` section, those entries need the same manual enum/field review as new snippets do
 
             Reference: [@eyeo/snippets source](https://gitlab.com/eyeo/anti-cv/snippets)
           commit-message: 'chore: flag new snippets from @eyeo/snippets'
           labels: 'snippets,maintenance'
+
+      - name: Fail if snippet schema drift was detected
+        if: (steps.check.outputs.exit_code != '0' && steps.check.outputs.exit_code != '2') || contains(steps.check.outputs.output, 'DRIFT_DETECTED')
+        run: |
+          echo "::error::Existing snippet schemas have drifted from upstream — see the DRIFT_DETECTED block above."
+          exit 1

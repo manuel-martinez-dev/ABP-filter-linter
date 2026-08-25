@@ -1,11 +1,10 @@
-/**
- * Prints the source function body for a named snippet in @eyeo/snippets.
- * Usage: node .github/scripts/inspect-snippet.mjs <snippet-name>
- */
+// Prints the source function body for a named snippet in @eyeo/snippets.
+// Usage: node .github/scripts/inspect-snippet.mjs <snippet-name>
 
 import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
+import { buildNameMap } from './lib/snippet-diff.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -22,35 +21,10 @@ if (!snippetName) {
   process.exit(1);
 }
 
-// Parse the snippets$1 / snippets$2 mapping objects to get kebab→camelCase names.
-// Avoids algorithmic conversion which breaks for aliases like "debug" → setDebug.
-function buildNameMap(sourceText) {
-  const map = new Map();
-  const blockPattern = /const snippets\$[12]\s*=\s*\{/g;
-  let m;
-  while ((m = blockPattern.exec(sourceText)) !== null) {
-    const blockStart = m.index + m[0].length;
-    let depth = 1, i = blockStart;
-    while (i < sourceText.length && depth > 0) {
-      if (sourceText[i] === '{') depth++;
-      else if (sourceText[i] === '}') depth--;
-      i++;
-    }
-    const blockContent = sourceText.slice(blockStart, i - 1);
-    const pairPattern = /"([^"]+)":\s*([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
-    let pair;
-    while ((pair = pairPattern.exec(blockContent)) !== null) {
-      map.set(pair[1], pair[2]);
-    }
-  }
-  return map;
-}
-
 function extractFullBody(sourceText, funcName) {
   const startMatch = new RegExp(`function\\s+${funcName}\\s*\\(`).exec(sourceText);
   if (!startMatch) return null;
 
-  // Walk past the signature parens
   const openParenIdx = sourceText.indexOf('(', startMatch.index);
   let depth = 0, i = openParenIdx;
   for (; i < sourceText.length; i++) {
@@ -61,7 +35,6 @@ function extractFullBody(sourceText, funcName) {
     }
   }
 
-  // Walk the function body braces
   const bodyOpenBrace = sourceText.indexOf('{', i);
   if (bodyOpenBrace === -1) return null;
 

@@ -131,11 +131,24 @@
           "required": true,
           "enum": [
             "trusted",
-            "disable"
+            "disable",
+            "rewrite"
           ]
         },
         {
           "name": "needle",
+          "required": false
+        },
+        {
+          "name": "property",
+          "required": false
+        },
+        {
+          "name": "pattern",
+          "required": false
+        },
+        {
+          "name": "replacement",
           "required": false
         }
       ]
@@ -517,6 +530,14 @@
         {
           "name": "searchSelector",
           "required": false
+        },
+        {
+          "name": "ignoreChars",
+          "required": false
+        },
+        {
+          "name": "maxSearches",
+          "required": false
         }
       ]
     },
@@ -695,7 +716,12 @@
     "debug": {
       "since": "3.8",
       "category": "debugging",
-      "args": []
+      "args": [
+        {
+          "name": "pattern",
+          "required": false
+        }
+      ]
     },
     "log": {
       "since": "3.3",
@@ -1002,7 +1028,12 @@
         },
         {
           "name": "decoy",
-          "required": false
+          "required": false,
+          "enum": [
+            "iframe",
+            "obj",
+            "blank"
+          ]
         }
       ]
     },
@@ -1023,7 +1054,11 @@
         },
         {
           "name": "mode",
-          "required": false
+          "required": false,
+          "enum": [
+            "replace",
+            "append"
+          ]
         }
       ]
     }

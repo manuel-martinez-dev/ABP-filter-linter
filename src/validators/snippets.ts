@@ -309,7 +309,7 @@ export function validateSnippetCall(
   }
 
   // Too-many-args check for non-variadic snippets
-  if (!variadicArg && args.length > schema.args.length) {
+  if (!variadicArg && args.length > schema.args.length && name !== 'event-override') {
     results.push({
       message: `"${name}" accepts at most ${schema.args.length} argument(s) but got ${args.length}`,
       severity: 'warning',
@@ -401,6 +401,28 @@ export function validateSnippetCall(
         });
       }
       nestedSearchOffset += argVal.length + 1;
+    }
+  }
+
+  // event-override: property/pattern only apply (and are required) in rewrite mode
+  if (name === 'event-override') {
+    const mode = args[1];
+    const maxArgs = mode === 'rewrite' ? schema.args.length : 3;
+    if (args.length > maxArgs) {
+      results.push({
+        message: `"${name}" accepts at most ${maxArgs} argument(s) but got ${args.length}`,
+        severity: 'warning',
+        startCol: absStart,
+        endCol: absEnd,
+      });
+    }
+    if (mode === 'rewrite' && (!args[3] || !args[4])) {
+      results.push({
+        message: `"${name}" in "rewrite" mode requires "property" and "pattern" arguments`,
+        severity: 'error',
+        startCol: absStart,
+        endCol: absEnd,
+      });
     }
   }
 
