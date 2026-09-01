@@ -17,6 +17,17 @@ export function checkGenericBodyLength(
   };
 }
 
+/** core reclassifies an empty body as a URL pattern, not a content filter */
+export function checkEmptyBody(body: string, separator: string, bodyOffset: number): LintResult | null {
+  if (body.trim()) return null;
+  return {
+    message: `"${separator}" filter has an empty body — ABP will not parse this as a content filter`,
+    severity: 'error',
+    startCol: bodyOffset,
+    endCol: bodyOffset + Math.max(body.length, 1),
+  };
+}
+
 export function validateCosmeticSelector(
   selector: string,
   bodyOffset: number

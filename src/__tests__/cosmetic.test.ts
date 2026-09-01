@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { checkGenericBodyLength, validateCosmeticSelector } from '../validators/cosmetic';
+import { checkEmptyBody, checkGenericBodyLength, validateCosmeticSelector } from '../validators/cosmetic';
+
+/** mirrors extension.ts's cosmetic wiring */
+function lintCosmeticLine(domains: string[], body: string) {
+  const results = [];
+  const emptyBody = checkEmptyBody(body, '##', 0);
+  if (emptyBody) {
+    results.push(emptyBody);
+  } else {
+    const tooGeneric = checkGenericBodyLength(domains, body, 0);
+    if (tooGeneric) results.push(tooGeneric);
+  }
+  results.push(...validateCosmeticSelector(body, 0));
+  return results;
+}
 
 describe('validateCosmeticSelector', () => {
   it('returns no errors for a valid selector', async () => {
@@ -122,5 +136,44 @@ describe('checkGenericBodyLength (filter_elemhide_not_specific_enough)', () => {
 
   it('counts raw length like core (no trim)', () => {
     expect(checkGenericBodyLength([], ' .a', 2)).toBeNull();
+  });
+});
+
+describe('checkEmptyBody', () => {
+  it('errors on an empty body with a restricting domain (example.com##)', () => {
+    const r = checkEmptyBody('', '##', 12);
+    expect(r).not.toBeNull();
+    expect(r!.severity).toBe('error');
+    expect(r!.message).toContain('##');
+  });
+
+  it('errors on an empty body for #?#', () => {
+    expect(checkEmptyBody('', '#?#', 12)).not.toBeNull();
+  });
+
+  it('errors on an empty body for #@#', () => {
+    expect(checkEmptyBody('', '#@#', 12)).not.toBeNull();
+  });
+
+  it('errors on a whitespace-only body', () => {
+    expect(checkEmptyBody('   ', '##', 12)).not.toBeNull();
+  });
+
+  it('accepts a non-empty body', () => {
+    expect(checkEmptyBody('.ad', '##', 12)).toBeNull();
+  });
+});
+
+describe('report-2026-08-25 §6 regression contract (verified NOT gaps, cosmetic path)', () => {
+  it('##.ad', () => {
+    expect(lintCosmeticLine([], '.ad')).toHaveLength(0);
+  });
+
+  it('#@#.ad', () => {
+    expect(lintCosmeticLine([], '.ad')).toHaveLength(0);
+  });
+
+  it('example.com##:has(.x)', () => {
+    expect(lintCosmeticLine(['example.com'], ':has(.x)')).toHaveLength(0);
   });
 });

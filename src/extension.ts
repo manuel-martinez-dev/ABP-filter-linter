@@ -3,7 +3,7 @@ import { parseLine, isAbpDocument } from './parser';
 import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, snippetChainRequiresDomain } from './validators/snippets';
 import { isRestrictedByDomain } from './validators/utils';
 import { validateNetworkRule } from './validators/network';
-import { checkGenericBodyLength, validateCosmeticSelector } from './validators/cosmetic';
+import { checkEmptyBody, checkGenericBodyLength, validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
 import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
@@ -81,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
       // generic #@# exceptions are valid ABP syntax — only #?# requires a restricting domain
-      if (parsed.type === 'extended' && !isRestrictedByDomain(parsed.domains)) {
+      if (parsed.type === 'extended' && parsed.body.trim() && !isRestrictedByDomain(parsed.domains)) {
         const sep = parsed.separator;
         const range = new vscode.Range(i, 0, i, lines[i].length);
         const diag = new vscode.Diagnostic(
@@ -131,12 +131,19 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (parsed.type === 'cosmetic' || parsed.type === 'hiding-exception') {
-        const tooGeneric = checkGenericBodyLength(parsed.domains, parsed.body, parsed.bodyOffset);
-        if (tooGeneric) results.push(tooGeneric);
+        const emptyBody = checkEmptyBody(parsed.body, parsed.separator, parsed.bodyOffset);
+        if (emptyBody) {
+          results.push(emptyBody);
+        } else {
+          const tooGeneric = checkGenericBodyLength(parsed.domains, parsed.body, parsed.bodyOffset);
+          if (tooGeneric) results.push(tooGeneric);
+        }
         results.push(...validateCosmeticSelector(parsed.body, parsed.bodyOffset));
       }
 
       if (parsed.type === 'extended') {
+        const emptyBody = checkEmptyBody(parsed.body, parsed.separator, parsed.bodyOffset);
+        if (emptyBody) results.push(emptyBody);
         results.push(...validateExtendedSelector(parsed.body, parsed.bodyOffset));
       }
 

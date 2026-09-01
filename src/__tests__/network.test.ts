@@ -621,3 +621,208 @@ describe('missing options separator', () => {
     expect(validateNetworkRule('||ads.example.com^', false, 0)).toHaveLength(0);
   });
 });
+
+describe('regex body validation', () => {
+  it('flags an unterminated group', () => {
+    const results = validateNetworkRule('/(((((/', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('flags a quantifier with numbers out of order', () => {
+    const results = validateNetworkRule('/a{2,1}/', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('flags a character class range out of order', () => {
+    const results = validateNetworkRule('/[z-a]/', false, 0);
+    const err = results.find(r => r.message.includes('Invalid regular expression'));
+    expect(err!.message).toBe('Invalid regular expression: Range out of order in character class');
+  });
+
+  it('flags an invalid regex body even with options attached', () => {
+    const results = validateNetworkRule('/(((((/$script', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('flags an invalid regex body with options in either order', () => {
+    const results = validateNetworkRule('/a{2,1}/$third-party,script', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('does not flag a valid regex body', () => {
+    expect(validateNetworkRule('/valid.*regex/', false, 0)).toHaveLength(0);
+  });
+
+  it('does not flag a valid regex body with options', () => {
+    expect(validateNetworkRule('/valid.*regex/$script', false, 0)).toHaveLength(0);
+  });
+
+  it('does not flag a non-regex pattern', () => {
+    expect(validateNetworkRule('||ads.example.com^$script', false, 0)).toHaveLength(0);
+  });
+
+  it('does not duplicate the prefix when the regex source contains a colon', () => {
+    const results = validateNetworkRule('/https:(/', false, 0);
+    const err = results.find(r => r.message.includes('Invalid regular expression'));
+    expect(err).toBeDefined();
+    expect(err!.message).toBe('Invalid regular expression: Unterminated group');
+  });
+
+  it('does not flag a pattern that is only invalid at its literal case (core lowercases first)', () => {
+    expect(validateNetworkRule('/[a-Z]/', false, 0)).toHaveLength(0);
+  });
+
+  it('flags a pattern that is only invalid once core lowercases it', () => {
+    const results = validateNetworkRule('/[U-pc]/', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('does not lowercase the source when $match-case is set', () => {
+    const results = validateNetworkRule('/[a-Z]/$match-case', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('does not flag a pattern that is only invalid when lowercased, under $match-case', () => {
+    expect(validateNetworkRule('/[U-pc]/$match-case', false, 0)).toHaveLength(0);
+  });
+
+  it('a later ~match-case overrides an earlier match-case (order matters)', () => {
+    expect(validateNetworkRule('/[a-Z]/$match-case,~match-case', false, 0)).toHaveLength(0);
+  });
+
+  it('a later match-case overrides an earlier ~match-case (order matters)', () => {
+    const results = validateNetworkRule('/[a-Z]/$~match-case,match-case', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('flags a pattern that only breaks once core strips the space (dangling escape)', () => {
+    const results = validateNetworkRule('/d\\ /', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('does not flag a pattern that is only invalid before core strips the space', () => {
+    expect(validateNetworkRule('/\\ [/', false, 0)).toHaveLength(0);
+  });
+
+  it('flags an invalid pattern when a space before "$" hides the closing slash', () => {
+    const results = validateNetworkRule('/((/ $script', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('flags an invalid pattern when a tab before "$" hides the closing slash', () => {
+    const results = validateNetworkRule('/((/\t$script', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  });
+
+  it('does not flag a valid pattern with a space before "$"', () => {
+    expect(validateNetworkRule('/valid.*regex/ $script', false, 0)).toHaveLength(0);
+  });
+});
+
+describe('duplicate modifiers', () => {
+  it('warns on a duplicate content-type modifier', () => {
+    const results = validateNetworkRule('||a.com^$image,image', false, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "image"'))).toBe(true);
+  });
+
+  it('warns on a duplicate popup modifier', () => {
+    const results = validateNetworkRule('||a.com^$popup,popup', false, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "popup"'))).toBe(true);
+  });
+
+  it('warns on a duplicate match-case modifier', () => {
+    const results = validateNetworkRule('||a.com^$match-case,match-case', false, 0);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "match-case"'))).toBe(true);
+  });
+
+  it('warns once per duplicate header= occurrence, in addition to the MV3 warning', () => {
+    const results = validateNetworkRule('||a.com^$header=x-a,header=x-b', false, 0);
+    expect(results.filter(r => r.message.includes('Duplicate modifier "header"'))).toHaveLength(1);
+  });
+
+  it('does not warn on a single occurrence', () => {
+    expect(validateNetworkRule('||a.com^$image', false, 0)).toHaveLength(0);
+  });
+});
+
+describe('self-negating modifier pairs', () => {
+  it('warns (not errors) on third-party combined with its own negation — plain last-write-wins boolean in core', () => {
+    const results = validateNetworkRule('||a.com^$third-party,~third-party', false, 0);
+    expect(results.some(r => r.message.includes('combined with its own negation'))).toBe(false);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "third-party"'))).toBe(true);
+  });
+
+  it('errors on script combined with its own negation — core zeroes the content-type bitmask', () => {
+    const results = validateNetworkRule('||a.com^$script,~script', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('combined with its own negation'))).toBe(true);
+  });
+
+  it('does not error on match-case combined with its own negation (well-defined override in core)', () => {
+    const results = validateNetworkRule('||a.com^$match-case,~match-case', false, 0);
+    expect(results.some(r => r.message.includes('combined with its own negation'))).toBe(false);
+  });
+
+  it('does not treat domain= polarity as a conflict — core ignores "~" for domain entirely', () => {
+    const results = validateNetworkRule('||a.com^$domain=a.com,~domain=b.com', false, 0);
+    expect(results.some(r => r.message.includes('combined with its own negation'))).toBe(false);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "domain"'))).toBe(true);
+  });
+
+  it('errors on the reverse order too (~script,script) — nets to no content-type restriction at all, not what either token alone means', () => {
+    const results = validateNetworkRule('||a.com^$~script,script', false, 0);
+    expect(results.some(r => r.severity === 'error' && r.message.includes('combined with its own negation'))).toBe(true);
+  });
+
+  it('reports one conflict, not two, for a repeated negated modifier (script,~script,~script)', () => {
+    const results = validateNetworkRule('||a.com^$script,~script,~script', false, 0);
+    expect(results.filter(r => r.message.includes('combined with its own negation'))).toHaveLength(1);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "script"'))).toBe(true);
+  });
+
+  it('warns on the exact repeat trailing a tolerated polarity flip (match-case,~match-case,~match-case)', () => {
+    const results = validateNetworkRule('||a.com^$match-case,~match-case,~match-case', false, 0);
+    expect(results.some(r => r.message.includes('combined with its own negation'))).toBe(false);
+    expect(results.some(r => r.severity === 'warning' && r.message.includes('Duplicate modifier "match-case"'))).toBe(true);
+  });
+
+  it('does not error on a single negated modifier', () => {
+    expect(validateNetworkRule('||a.com^$~third-party', false, 0)).toHaveLength(0);
+  });
+});
+
+describe('deduplicated MV3 diagnostics', () => {
+  it('does not repeat the MV3 warning for a duplicate header= modifier', () => {
+    const results = validateNetworkRule('||a.com^$header=x-a,header=x-b', false, 0);
+    expect(results.filter(r => r.message.includes('no effect in Chrome'))).toHaveLength(1);
+  });
+});
+
+describe('report-2026-08-25 §6 regression contract (verified NOT gaps, network path)', () => {
+  it('||a.com^$addheader=set-cookie:a=b', () => {
+    expect(validateNetworkRule('||a.com^$addheader=set-cookie:a=b', false, 0)).toHaveLength(0);
+  });
+
+  it('/valid.*regex/$script', () => {
+    expect(validateNetworkRule('/valid.*regex/$script', false, 0)).toHaveLength(0);
+  });
+
+  it('|http://a.com|$script', () => {
+    expect(validateNetworkRule('|http://a.com|$script', false, 0)).toHaveLength(0);
+  });
+
+  it('$script,domain=a.com', () => {
+    expect(validateNetworkRule('$script,domain=a.com', false, 0)).toHaveLength(0);
+  });
+
+  it('@@||a.com^$elemhide', () => {
+    expect(validateNetworkRule('||a.com^$elemhide', true, 0)).toHaveLength(0);
+  });
+
+  it('||site.com^$~third-party', () => {
+    expect(validateNetworkRule('||site.com^$~third-party', false, 0)).toHaveLength(0);
+  });
+
+  it('||UPPER.com^$script', () => {
+    expect(validateNetworkRule('||UPPER.com^$script', false, 0)).toHaveLength(0);
+  });
+});

@@ -86,6 +86,45 @@ export function findOptionsSeparator(body: string): number {
   return match ? match[1].length : -1;
 }
 
+/** mirrors core: last match-case/~match-case wins */
+function hasEffectiveMatchCase(modifierStr: string): boolean {
+  let matchCase = false;
+  for (const mod of modifierStr.split(',')) {
+    const trimmed = mod.trim();
+    const negated = trimmed.startsWith('~');
+    const raw = negated ? trimmed.slice(1) : trimmed;
+    const eqIdx = raw.indexOf('=');
+    const key = (eqIdx === -1 ? raw : raw.slice(0, eqIdx)).toLowerCase();
+    if (key === 'match-case') matchCase = !negated;
+  }
+  return matchCase;
+}
+
+/** filter_invalid_regexp */
+function checkRegexBody(body: string, dollarIdx: number, bodyOffset: number): LintResult | null {
+  const pattern = dollarIdx === -1 ? body : body.slice(0, dollarIdx);
+
+  const normalizedBody = body.replace(/\s+/g, '');
+  const normDollarIdx = findOptionsSeparator(normalizedBody);
+  const normPattern = normDollarIdx === -1 ? normalizedBody : normalizedBody.slice(0, normDollarIdx);
+  if (normPattern.length < 2 || !normPattern.startsWith('/') || !normPattern.endsWith('/')) return null;
+
+  const hasMatchCase = normDollarIdx !== -1 && hasEffectiveMatchCase(normalizedBody.slice(normDollarIdx + 1));
+  const source = normPattern.slice(1, -1);
+  try {
+    new RegExp(hasMatchCase ? source : source.toLowerCase());
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message.replace(/^Invalid regular expression: \/[\s\S]*\/: /, '') : 'invalid';
+    return {
+      message: `Invalid regular expression: ${msg}`,
+      severity: 'error',
+      startCol: bodyOffset,
+      endCol: bodyOffset + pattern.length,
+    };
+  }
+  return null;
+}
+
 /** A dropped "$" leaves a valid filter whose option names are matched as literal URL text */
 function checkMissingOptionSeparator(
   body: string,
@@ -122,6 +161,9 @@ export function validateNetworkRule(
   const results: LintResult[] = [];
 
   const dollarIdx = findOptionsSeparator(body);
+  const regexBodyResult = checkRegexBody(body, dollarIdx, bodyOffset);
+  if (regexBodyResult) results.push(regexBodyResult);
+
   if (dollarIdx === -1) {
     checkPatternSpecificity(body, bodyOffset, results);
     checkMissingOptionSeparator(body, isException, bodyOffset, results);
@@ -141,6 +183,9 @@ export function validateNetworkRule(
 
   /** Tokens that are unknown but look like domain names — checked after the loop */
   const domainLikeUnknowns: Array<{ key: string; start: number; end: number }> = []; // key used for fallback "Unknown modifier" message
+
+  const seenPolarities = new Map<string, Set<boolean>>();
+  const mv3Warned = new Set<string>();
 
   for (const mod of modifiers) {
     const trimmedMod = mod.trim();
@@ -179,6 +224,32 @@ export function validateNetworkRule(
       });
     }
 
+    // either order breaks the content-type bitmask
+    const dupPolarity = NEGATION_IGNORED.has(key) || key === 'third-party' ? false : negated;
+    const seen = seenPolarities.get(key);
+    if (seen) {
+      if (seen.has(dupPolarity)) {
+        results.push({
+          message: `Duplicate modifier "${key}"`,
+          severity: 'warning',
+          startCol: modStart,
+          endCol: modEnd,
+        });
+      } else {
+        seen.add(dupPolarity);
+        if (key !== 'match-case') {
+          results.push({
+            message: `"${key}" is combined with its own negation "~${key}"`,
+            severity: 'error',
+            startCol: modStart,
+            endCol: modEnd,
+          });
+        }
+      }
+    } else {
+      seenPolarities.set(key, new Set([dupPolarity]));
+    }
+
     // exception-only modifiers on non-@@ rules
     if (!negated && EXCEPTION_ONLY.has(key) && !isException) {
       results.push({
@@ -199,7 +270,8 @@ export function validateNetworkRule(
       });
     }
 
-    if (MV3_UNSUPPORTED.has(key)) {
+    if (MV3_UNSUPPORTED.has(key) && !mv3Warned.has(key)) {
+      mv3Warned.add(key);
       results.push({
         message: `"${key}" has no effect in Chrome (MV3) — Firefox only`,
         severity: 'warning',
