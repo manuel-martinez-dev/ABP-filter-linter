@@ -4,15 +4,12 @@
 import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
-import { buildNameMap } from './lib/snippet-diff.mjs';
+import { SNIPPET_SOURCE_FILES, buildNameMap } from './lib/snippet-diff.mjs';
 
 const require = createRequire(import.meta.url);
 
 const snippetsPkg = require.resolve('@eyeo/snippets/package.json');
 const snippetsDir = path.dirname(snippetsPkg);
-const sourceFile = path.join(snippetsDir, 'webext', 'snippets.source.mjs');
-
-const src = readFileSync(sourceFile, 'utf8');
 const version = JSON.parse(readFileSync(snippetsPkg, 'utf8')).version;
 
 const snippetName = process.argv[2];
@@ -54,8 +51,19 @@ function extractFullBody(sourceText, funcName) {
   };
 }
 
-const nameMap = buildNameMap(src);
-const funcName = nameMap.get(snippetName);
+let src;
+let sourceFile;
+let funcName;
+for (const file of SNIPPET_SOURCE_FILES) {
+  const source = readFileSync(path.join(snippetsDir, 'webext', file), 'utf8');
+  const name = buildNameMap(source).get(snippetName);
+  if (name) {
+    src = source;
+    sourceFile = file;
+    funcName = name;
+    break;
+  }
+}
 
 if (!funcName) {
   console.error(`Snippet "${snippetName}" not found in @eyeo/snippets v${version}.`);
@@ -71,6 +79,7 @@ if (!result) {
 console.log(`Snippet:  ${snippetName}`);
 console.log(`Function: ${funcName}`);
 console.log(`Version:  @eyeo/snippets v${version}`);
+console.log(`Source:   ${sourceFile}`);
 console.log(`Line:     ${result.lineNumber}`);
 console.log(`\n${'─'.repeat(60)}\n`);
 console.log(result.body);

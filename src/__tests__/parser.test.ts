@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { parseLine, isAbpDocument } from '../parser';
 
 describe('parseLine', () => {
+  it.each(['/foo##bar/', '/foo#$#bar/', '||example.com/path##ad$script', 'https://example.com/#?#ad'])
+    ('keeps content separators inside network patterns: %s', text => {
+      const parsed = parseLine(text, 0);
+      expect(parsed.type).toBe('network');
+      expect(parsed.body).toBe(text);
+    });
+
   it('classifies comments', () => {
     expect(parseLine('! This is a comment', 0).type).toBe('comment');
   });

@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { parseUpstreamGraph, buildNameMap, parseSnippetArgs, compareArgs, formatDriftReport } from '../snippet-diff.mjs';
+import {
+  parseUpstreamGraph, buildNameMap, parseSnippetArgs, compareArgs, formatDriftReport,
+  toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
+} from '../snippet-diff.mjs';
 
 describe('parseUpstreamGraph', () => {
+  it('includes heavy snippets with dependency functions', () => {
+    const src = 'const graph = new Map([["debug",null],["xpath",function dependency() { return ["not-a-snippet", null]; }]]);';
+    expect(parseUpstreamGraph(src)).toEqual(new Set(['debug', 'xpath']));
+  });
   it('extracts names from a valid graph', () => {
     const src = 'const graph = new Map([["foo",null],["bar-baz",null]]);';
     const names = parseUpstreamGraph(src);
@@ -23,6 +30,9 @@ describe('parseUpstreamGraph', () => {
 });
 
 describe('buildNameMap', () => {
+  it('maps an unnumbered heavy bundle', () => {
+    expect(buildNameMap('const snippets = { "xpath": hideXPath };').get('xpath')).toBe('hideXPath');
+  });
   it('maps quoted entries', () => {
     const src = 'const snippets$1 = { "foo": fooFunc, "bar-baz": barBazFunc };';
     const map = buildNameMap(src);
@@ -54,6 +64,15 @@ describe('buildNameMap', () => {
 });
 
 describe('parseSnippetArgs', () => {
+  it.each(['selector="*"', 'selector ="*"', 'selector= "*"'])('parses compact defaults: %s', param => {
+    expect(parseSnippetArgs('foo', `function foo(${param}) {}`, new Map([['foo', 'foo']])))
+      .toEqual([{ name: 'selector', required: false, defaultExpr: '"*"' }]);
+  });
+
+  it('preserves internal whitespace in the default expression despite extra spacing before "="', () => {
+    expect(parseSnippetArgs('foo', 'function foo(selector    = "x  y") {}', new Map([['foo', 'foo']])))
+      .toEqual([{ name: 'selector', required: false, defaultExpr: '"x  y"' }]);
+  });
   const nameMap = new Map([
     ['foo', 'foo'],
     ['zero', 'zero'],
@@ -72,7 +91,7 @@ describe('parseSnippetArgs', () => {
     const src = 'function foo(a, b = "") { }';
     expect(parseSnippetArgs('foo', src, nameMap)).toEqual([
       { name: 'a', required: true },
-      { name: 'b', required: false },
+      { name: 'b', required: false, defaultExpr: '""' },
     ]);
   });
 
@@ -131,7 +150,7 @@ describe('parseSnippetArgs', () => {
   it('does not end the signature scan early on a ")" inside a default-value string', () => {
     const src = 'function foo(a = ")", b) { return a; }';
     expect(parseSnippetArgs('foo', src, nameMap)).toEqual([
-      { name: 'a', required: false },
+      { name: 'a', required: false, defaultExpr: '")"' },
       { name: 'b', required: true },
     ]);
   });
@@ -150,6 +169,26 @@ describe('parseSnippetArgs', () => {
 });
 
 describe('compareArgs', () => {
+  it('flags recorded=true/upstream=false (schema over-strict)', () => {
+    const recorded = [{ name: 'search', required: true }];
+    const upstream = [{ name: 'textToReplace', required: false, defaultExpr: '""' }];
+    expect(compareArgs(recorded, upstream).requiredDiffs).toEqual([
+      { arg: 'search', position: 1, recorded: true, upstream: false, upstreamParam: 'textToReplace', defaultExpr: '""' },
+    ]);
+  });
+
+  it('does not flag recorded=false/upstream=true (unreliable direction, dropped)', () => {
+    const recorded = [{ name: 'search', required: false }];
+    const upstream = [{ name: 'textToReplace', required: true }];
+    expect(compareArgs(recorded, upstream).requiredDiffs).toEqual([]);
+  });
+
+  it('does not compare variadic slots with fixed parameters', () => {
+    const recorded = [{ name: 'rest', required: true, variadic: true }];
+    const upstream = [{ name: 'selector', required: false }];
+    expect(compareArgs(recorded, upstream).requiredDiffs).toEqual([]);
+  });
+
   it('flags arity growth (non-variadic)', () => {
     const recorded = [{ name: 'a', required: true }, { name: 'b', required: false }];
     const upstream = [{ name: 'a', required: true }, { name: 'b', required: false }, { name: 'c', required: false }];
@@ -232,5 +271,155 @@ describe('formatDriftReport', () => {
     expect(formatDriftReport(drifted, unresolved)).toBe(
       'DRIFT_DETECTED\nfoo: recorded=[a] upstream=[a, b]\nbar: UNRESOLVED — function signature could not be located, drift checks skipped for this snippet'
     );
+  });
+});
+
+describe('toRuntimeArgs', () => {
+  it('strips defaultExpr, keeps other fields', () => {
+    const args = [
+      { name: 'a', required: true },
+      { name: 'b', required: false, defaultExpr: '"*"' },
+      { name: 'c', required: false, variadic: true, enum: ['x'] },
+    ];
+    expect(toRuntimeArgs(args)).toEqual([
+      { name: 'a', required: true },
+      { name: 'b', required: false },
+      { name: 'c', required: false, variadic: true, enum: ['x'] },
+    ]);
+  });
+});
+
+describe('validateLedger', () => {
+  const validEntry = { snippet: 'foo', arg: 'a', upstreamParam: 'a', position: 1, defaultExpr: '""', reason: 'why' };
+
+  it('accepts a well-formed ledger', () => {
+    expect(validateLedger({ version: 1, entries: [validEntry] })).toEqual([validEntry]);
+  });
+
+  it('throws on the wrong version', () => {
+    expect(() => validateLedger({ version: 2, entries: [] })).toThrow(/version 1/);
+  });
+
+  it('throws when entries is not an array', () => {
+    expect(() => validateLedger({ version: 1, entries: {} })).toThrow(/entries must be an array/);
+  });
+
+  it.each(['snippet', 'arg', 'upstreamParam', 'defaultExpr', 'reason'])('throws when %s is missing or empty', field => {
+    expect(() => validateLedger({ version: 1, entries: [{ ...validEntry, [field]: '' }] })).toThrow(new RegExp(field));
+  });
+
+  it.each([0, -1, 1.5, 'x'])('throws on a non-positive-integer position (%s)', position => {
+    expect(() => validateLedger({ version: 1, entries: [{ ...validEntry, position }] })).toThrow(/position/);
+  });
+
+  it('throws on duplicate (snippet, position) pairs', () => {
+    expect(() => validateLedger({ version: 1, entries: [validEntry, { ...validEntry, arg: 'b' }] })).toThrow(/duplicate/);
+  });
+});
+
+describe('filterUnreviewedCandidates', () => {
+  const diff = { arg: 'search', position: 2, recorded: true, upstream: false, upstreamParam: 'textToReplace', defaultExpr: '""' };
+  const entry = { snippet: 'replace-outbound-value', arg: 'search', upstreamParam: 'textToReplace', position: 2, defaultExpr: '""', reason: 'why' };
+
+  it('suppresses when the ledger entry matches exactly', () => {
+    expect(filterUnreviewedCandidates('replace-outbound-value', [diff], [entry])).toEqual([]);
+  });
+
+  it('does not suppress when no ledger entry exists', () => {
+    expect(filterUnreviewedCandidates('replace-outbound-value', [diff], [])).toEqual([diff]);
+  });
+
+  it('does not suppress when defaultExpr differs', () => {
+    expect(filterUnreviewedCandidates('replace-outbound-value', [diff], [{ ...entry, defaultExpr: '"x"' }])).toEqual([diff]);
+  });
+
+  it('does not suppress when upstreamParam differs', () => {
+    expect(filterUnreviewedCandidates('replace-outbound-value', [diff], [{ ...entry, upstreamParam: 'other' }])).toEqual([diff]);
+  });
+});
+
+describe('checkLedgerStaleness', () => {
+  const baseEntry = { snippet: 'foo', arg: 'search', upstreamParam: 'textToReplace', position: 2, defaultExpr: '""', reason: 'why' };
+  const sourcesFor = (src, nameMap = new Map([['foo', 'foo']])) => new Map([['foo', { src, nameMap }]]);
+
+  it('returns [] when everything still matches', () => {
+    const src = 'function foo(methodPath, textToReplace = "") {}';
+    expect(checkLedgerStaleness([baseEntry], sourcesFor(src))).toEqual([]);
+  });
+
+  it('flags a changed default expression', () => {
+    const src = 'function foo(methodPath, textToReplace = "x") {}';
+    expect(checkLedgerStaleness([baseEntry], sourcesFor(src))[0].status).toMatch(/default expression changed/);
+  });
+
+  it('flags a disappeared default, hedged rather than confirmed', () => {
+    const src = 'function foo(methodPath, textToReplace) {}';
+    const status = checkLedgerStaleness([baseEntry], sourcesFor(src))[0].status;
+    expect(status).toMatch(/no longer present upstream/);
+    expect(status).toMatch(/does not by itself mean/);
+    expect(status).not.toMatch(/confirmed/i);
+  });
+
+  it('flags a renamed upstream parameter', () => {
+    const src = 'function foo(methodPath, replacement = "") {}';
+    expect(checkLedgerStaleness([baseEntry], sourcesFor(src))[0].status).toMatch(/renamed to "replacement"/);
+  });
+
+  it('flags a snippet missing from sources entirely', () => {
+    expect(checkLedgerStaleness([baseEntry], new Map())[0].status).toMatch(/no longer found upstream/);
+  });
+
+  it('flags a missing function-name mapping', () => {
+    const sources = sourcesFor('function foo(){}', new Map());
+    expect(checkLedgerStaleness([baseEntry], sources)[0].status).toMatch(/no function-name mapping/);
+  });
+
+  it('flags an unresolvable function body', () => {
+    expect(checkLedgerStaleness([baseEntry], sourcesFor('no function here'))[0].status).toMatch(/could not be resolved or parsed/);
+  });
+
+  it('flags a position that no longer exists', () => {
+    expect(checkLedgerStaleness([baseEntry], sourcesFor('function foo(methodPath) {}'))[0].status).toMatch(/argument no longer found/);
+  });
+});
+
+describe('formatRequirednessReport', () => {
+  it('returns empty string for no candidates and no stale entries', () => {
+    expect(formatRequirednessReport([], [])).toBe('');
+  });
+
+  it('formats a new-candidate-only report', () => {
+    const candidates = [{ name: 'foo', requiredDiffs: [
+      { arg: 'search', position: 2, recorded: true, upstream: false, upstreamParam: 'textToReplace', defaultExpr: '""' },
+    ] }];
+    const report = formatRequirednessReport(candidates, []);
+    expect(report).toContain('REQUIREDNESS_REVIEW');
+    expect(report).toContain('NEW CANDIDATE:');
+    expect(report).not.toContain('LEDGER ENTRY NEEDS REVIEW:');
+  });
+
+  it('formats a stale-entry-only report', () => {
+    const stale = [{
+      snippet: 'foo', arg: 'search', upstreamParam: 'textToReplace', position: 2, defaultExpr: '""', reason: 'why',
+      status: 'default expression changed to "x" — needs review',
+    }];
+    const report = formatRequirednessReport([], stale);
+    expect(report).toContain('LEDGER ENTRY NEEDS REVIEW:');
+    expect(report).not.toContain('NEW CANDIDATE:');
+  });
+
+  it('consolidates an overlapping (snippet, position) into one line', () => {
+    const candidates = [{ name: 'foo', requiredDiffs: [
+      { arg: 'search', position: 2, recorded: true, upstream: false, upstreamParam: 'textToReplace', defaultExpr: '"x"' },
+    ] }];
+    const stale = [{
+      snippet: 'foo', arg: 'search', upstreamParam: 'textToReplace', position: 2, defaultExpr: '""', reason: 'why',
+      status: 'default expression changed to "x" — needs review',
+    }];
+    const report = formatRequirednessReport(candidates, stale);
+    const matchingLines = report.split('\n').filter(l => l.includes('foo') && l.includes('search'));
+    expect(matchingLines).toHaveLength(1);
+    expect(report).toContain('LEDGER ENTRY NEEDS REVIEW:');
+    expect(report).not.toContain('NEW CANDIDATE:');
   });
 });

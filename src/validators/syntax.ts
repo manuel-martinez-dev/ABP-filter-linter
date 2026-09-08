@@ -5,7 +5,7 @@ import { findOptionsSeparator, isRegexFilter } from './network';
 export function detectSpacesInDomains(line: string): LintResult | null {
   // Cosmetic/snippet/extended/hiding-exception: check domain part before separator
   const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
-  if (sepMatch && sepMatch.index !== undefined) {
+  if (sepMatch && sepMatch.index !== undefined && !/[/|@"!]/.test(line.slice(0, sepMatch.index))) {
     const domainPart = line.slice(0, sepMatch.index);
     if (!domainPart) return null;
     const spaceMatch = domainPart.match(/\s+/);
@@ -42,7 +42,7 @@ export function detectSpacesInDomains(line: string): LintResult | null {
 export function detectDoubleComma(line: string): LintResult | null {
   // For cosmetic/snippet rules: only check domain part (before the separator)
   const cosmeticMatch = line.match(/#(\$#|#|\?#|@#)/);
-  if (cosmeticMatch && cosmeticMatch.index !== undefined) {
+  if (cosmeticMatch && cosmeticMatch.index !== undefined && !/[/|@"!]/.test(line.slice(0, cosmeticMatch.index))) {
     const domainPart = line.slice(0, cosmeticMatch.index);
     const col = domainPart.indexOf(',,');
     if (col === -1) return null;
@@ -73,6 +73,7 @@ export function detectDomainListEdges(line: string): LintResult | null {
   const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
   if (!sepMatch || sepMatch.index === undefined) return null;
   const domainPart = line.slice(0, sepMatch.index);
+  if (/[/|@"!]/.test(domainPart)) return null;
   if (!domainPart) return null;
 
   const m = /(^|,)~?(,|$)/.exec(domainPart);

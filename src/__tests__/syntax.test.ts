@@ -3,6 +3,15 @@ import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detect
 import { parseLine } from '../parser';
 
 describe('detectDoubleComma', () => {
+  it.each(['/foo,,bar##baz/', '/foo bar#$#baz/'])('ignores domain-like syntax in network patterns: %s', text => {
+    expect(detectDoubleComma(text)).toBeNull();
+    expect(detectSpacesInDomains(text)).toBeNull();
+    expect(detectDomainListEdges(text)).toBeNull();
+  });
+
+  it('still checks options after a network pattern containing a content separator', () => {
+    expect(detectDoubleComma('||example.com/path##ad$script,,image')).not.toBeNull();
+  });
   it('returns null for valid line', () => {
     expect(detectDoubleComma('example.com##.ad')).toBeNull();
   });

@@ -100,6 +100,41 @@ function hasEffectiveMatchCase(modifierStr: string): boolean {
   return matchCase;
 }
 
+function unsupportedDnrRegexFeature(source: string): string | null {
+  let inClass = false;
+  let captures = 0;
+  let namedCapture = false;
+  const references: string[] = [];
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '\\') {
+      const escape = source[++i];
+      if (!inClass && /[1-9]/.test(escape ?? '')) {
+        const digits = source.slice(i).match(/^\d+/)![0];
+        references.push(digits);
+        i += digits.length - 1;
+      } else if (!inClass && escape === 'k' && source[i + 1] === '<') {
+        references.push('named');
+      }
+      continue;
+    }
+    if (ch === '[') inClass = true;
+    if (ch === ']') inClass = false;
+    if (inClass || ch !== '(') continue;
+    const tail = source.slice(i + 1);
+    if (/^\?(?:[=!]|<[=!])/.test(tail)) return 'lookaround';
+    if (tail.startsWith('?<')) {
+      namedCapture = true;
+      captures++;
+    } else if (!tail.startsWith('?')) {
+      captures++;
+    }
+  }
+  // Decimal escapes without a matching capture can be legacy octal escapes.
+  return references.some(ref => ref === 'named' ? namedCapture : Number(ref) <= captures)
+    ? 'backreferences' : null;
+}
+
 /** filter_invalid_regexp */
 function checkRegexBody(body: string, dollarIdx: number, bodyOffset: number): LintResult | null {
   const pattern = dollarIdx === -1 ? body : body.slice(0, dollarIdx);
@@ -112,12 +147,21 @@ function checkRegexBody(body: string, dollarIdx: number, bodyOffset: number): Li
   const hasMatchCase = normDollarIdx !== -1 && hasEffectiveMatchCase(normalizedBody.slice(normDollarIdx + 1));
   const source = normPattern.slice(1, -1);
   try {
-    new RegExp(hasMatchCase ? source : source.toLowerCase());
+    new RegExp(source, hasMatchCase ? '' : 'i');
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message.replace(/^Invalid regular expression: \/[\s\S]*\/: /, '') : 'invalid';
+    const msg = e instanceof Error ? e.message.replace(/^Invalid regular expression: \/[\s\S]*\/[a-z]*: /, '') : 'invalid';
     return {
       message: `Invalid regular expression: ${msg}`,
       severity: 'error',
+      startCol: bodyOffset,
+      endCol: bodyOffset + pattern.length,
+    };
+  }
+  const unsupported = unsupportedDnrRegexFeature(source);
+  if (unsupported) {
+    return {
+      message: `Regex ${unsupported} is not supported in Chrome (MV3) — Firefox only`,
+      severity: 'warning',
       startCol: bodyOffset,
       endCol: bodyOffset + pattern.length,
     };
@@ -173,6 +217,7 @@ export function validateNetworkRule(
   const modifierStr = body.slice(dollarIdx + 1);
   const modifiers = modifierStr.split(',');
   const modifierNames: string[] = [];
+  const positiveModifierNames = new Set<string>();
   let modRunningOffset = 0;
 
   // ~domain= counts too — ABP strips "~" before its option switch
@@ -411,6 +456,7 @@ export function validateNetworkRule(
     }
 
     modifierNames.push(key);
+    if (!negated) positiveModifierNames.add(key);
   }
 
   if (!hasDomainValue && !hasSitekeyValue) {
@@ -457,11 +503,11 @@ export function validateNetworkRule(
 
   // Incompatibility checks
   for (const [mod, incompatibles] of Object.entries(INCOMPATIBLE)) {
-    if (!modifierNames.includes(mod)) continue;
+    if (!positiveModifierNames.has(mod)) continue;
     // document can be combined with any modifier on exception (@@) rules
     if (isException && mod === 'document') continue;
     for (const inc of incompatibles) {
-      if (modifierNames.includes(inc)) {
+      if (positiveModifierNames.has(inc)) {
         results.push({
           message: `"${mod}" cannot be combined with "${inc}"`,
           severity: 'error',

@@ -1,16 +1,23 @@
 // Pure parsing/comparison logic for the check-snippets watcher — no file I/O or process.exit.
 
+export const SNIPPET_SOURCE_FILES = ['snippets.source.mjs', 'isolated-heavy.source.mjs'];
+
 export function parseUpstreamGraph(sourceText) {
-  const match = sourceText.match(/const graph = new Map\(\[(.+?)\]\);/s);
+  const match = /const graph = new Map\(\s*\[/.exec(sourceText);
   if (!match) return null;
-  const names = [...match[1].matchAll(/\[\s*"([^"]+)"\s*,\s*null\s*\]/g)].map(m => m[1]);
+  const start = match.index + match[0].length - 1;
+  const end = walkMatching(sourceText, start, '[', ']');
+  if (end === -1) return null;
+  const names = splitParams(sourceText.slice(start + 1, end))
+    .map(entry => /^\[\s*"([^"]+)"\s*,/.exec(entry)?.[1])
+    .filter(Boolean);
   return names.length > 0 ? new Set(names) : null;
 }
 
 // Avoids algorithmic kebab→camelCase conversion, which breaks for aliases like "debug" → setDebug.
 export function buildNameMap(sourceText) {
   const map = new Map();
-  const blockPattern = /const snippets\$[12]\s*=\s*\{/g;
+  const blockPattern = /const snippets(?:\$\d+)?\s*=\s*\{/g;
   let m;
   while ((m = blockPattern.exec(sourceText)) !== null) {
     const blockStart = m.index + m[0].length;
@@ -163,16 +170,21 @@ function splitParams(rawParams) {
   return params;
 }
 
-function parseParam(token) {
-  token = token.replace(/\s+/g, ' ').trim();
+function parseParam(rawToken) {
+  const token = rawToken.replace(/\s+/g, ' ').trim();
   if (token.startsWith('...')) {
     return { name: token.slice(3), required: true, variadic: true };
   }
-  const eqIdx = token.indexOf(' = ');
+  const eqIdx = token.indexOf('=');
   if (eqIdx === -1) {
     return { name: token, required: true };
   }
-  return { name: token.slice(0, eqIdx).trim(), required: false };
+  // Sliced from rawToken so internal whitespace in the default survives collapsing.
+  return {
+    name: token.slice(0, eqIdx).trim(),
+    required: false,
+    defaultExpr: rawToken.slice(rawToken.indexOf('=') + 1).trim(),
+  };
 }
 
 // Three strategies, in order: Object.values(CONST).includes(), array-literal .includes(), switch/case
@@ -247,6 +259,7 @@ export function parseSnippetArgs(snippetName, sourceText, nameMap) {
     const parsed = parseParam(token);
     const argEntry = { name: parsed.name, required: parsed.required };
     if (parsed.variadic) argEntry.variadic = true;
+    if (parsed.defaultExpr !== undefined) argEntry.defaultExpr = parsed.defaultExpr;
 
     const enumVals = detectEnum(parsed.name, bodySlice, preSlice);
     if (enumVals && enumVals.length > 0) argEntry.enum = enumVals;
@@ -265,8 +278,20 @@ export function compareArgs(recorded, upstreamArgs) {
   const arityGrew = upstreamPrefixLen > recordedPrefixLen;
 
   const enumDiffs = [];
+  const requiredDiffs = [];
   const fixedLen = Math.min(recordedPrefixLen, upstreamPrefixLen);
   for (let i = 0; i < fixedLen; i++) {
+    // Flag required arguments with upstream defaults for review.
+    if (recorded[i].required === true && upstreamArgs[i].required === false) {
+      requiredDiffs.push({
+        arg: recorded[i].name,
+        position: i + 1,
+        recorded: true,
+        upstream: false,
+        upstreamParam: upstreamArgs[i].name,
+        defaultExpr: upstreamArgs[i].defaultExpr,
+      });
+    }
     const upstreamEnum = upstreamArgs[i].enum;
     if (!upstreamEnum) continue;
     const recordedEnum = new Set(recorded[i].enum ?? []);
@@ -276,7 +301,7 @@ export function compareArgs(recorded, upstreamArgs) {
     }
   }
 
-  return { arityGrew, enumDiffs };
+  return { arityGrew, enumDiffs, requiredDiffs };
 }
 
 export function formatDriftReport(drifted, unresolved) {
@@ -290,4 +315,111 @@ export function formatDriftReport(drifted, unresolved) {
   const unresolvedLines = unresolved.map(u => `${u.name}: UNRESOLVED — ${u.reason}, drift checks skipped for this snippet`);
   const allLines = [...driftLines, ...unresolvedLines];
   return allLines.length > 0 ? 'DRIFT_DETECTED\n' + allLines.join('\n') : '';
+}
+
+// CI-only evidence — must never reach the shipped runtime schema.
+export function toRuntimeArgs(args) {
+  return args.map(({ defaultExpr, ...rest }) => rest);
+}
+
+const LEDGER_STRING_FIELDS = ['snippet', 'arg', 'upstreamParam', 'defaultExpr', 'reason'];
+
+export function validateLedger(raw) {
+  if (raw.version !== 1) throw new Error(`reviewed-requiredness.json: expected version 1, got ${raw.version}`);
+  if (!Array.isArray(raw.entries)) throw new Error('reviewed-requiredness.json: entries must be an array');
+
+  const seenKeys = new Set();
+  raw.entries.forEach((entry, i) => {
+    for (const field of LEDGER_STRING_FIELDS) {
+      if (typeof entry[field] !== 'string' || entry[field] === '') {
+        throw new Error(`reviewed-requiredness.json: entries[${i}].${field} must be a non-empty string`);
+      }
+    }
+    if (!Number.isInteger(entry.position) || entry.position < 1) {
+      throw new Error(`reviewed-requiredness.json: entries[${i}].position must be a positive integer`);
+    }
+    const key = `${entry.snippet}::${entry.position}`;
+    if (seenKeys.has(key)) {
+      throw new Error(`reviewed-requiredness.json: duplicate entry for snippet "${entry.snippet}" position ${entry.position}`);
+    }
+    seenKeys.add(key);
+  });
+
+  return raw.entries;
+}
+
+// Looked up by snippet+position only; a match also requires the evidence (defaultExpr, upstreamParam) to still hold.
+export function filterUnreviewedCandidates(snippetName, requiredDiffs, ledger) {
+  return requiredDiffs.filter(diff => {
+    const entry = ledger.find(e => e.snippet === snippetName && e.position === diff.position);
+    if (!entry) return true;
+    return !(entry.defaultExpr === diff.defaultExpr && entry.upstreamParam === diff.upstreamParam);
+  });
+}
+
+// Checks every entry regardless of compareArgs, or a removed default would go undetected.
+export function checkLedgerStaleness(ledger, sources) {
+  const stale = [];
+  for (const entry of ledger) {
+    const source = sources.get(entry.snippet);
+    if (!source) {
+      stale.push({ ...entry, status: 'snippet no longer found upstream — needs review' });
+      continue;
+    }
+    if (!source.nameMap.has(entry.snippet)) {
+      stale.push({ ...entry, status: 'no function-name mapping found for this snippet upstream — needs review' });
+      continue;
+    }
+    const upstreamArgs = parseSnippetArgs(entry.snippet, source.src, source.nameMap);
+    if (upstreamArgs === null) {
+      stale.push({ ...entry, status: 'upstream function could not be resolved or parsed — needs review' });
+      continue;
+    }
+    const upstreamArg = upstreamArgs[entry.position - 1];
+    if (!upstreamArg) {
+      stale.push({ ...entry, status: 'argument no longer found at recorded position upstream — needs review' });
+      continue;
+    }
+    if (upstreamArg.name !== entry.upstreamParam) {
+      stale.push({ ...entry, status: `upstream parameter renamed to "${upstreamArg.name}" — needs review` });
+      continue;
+    }
+    if (upstreamArg.defaultExpr !== entry.defaultExpr) {
+      stale.push({
+        ...entry,
+        status: upstreamArg.defaultExpr === undefined
+          ? 'default expression no longer present upstream — needs review (does not by itself mean the argument is now required; the function body may still handle omission)'
+          : `default expression changed to ${JSON.stringify(upstreamArg.defaultExpr)} — needs review`,
+      });
+    }
+  }
+  return stale;
+}
+
+// A (snippet, position) present in both inputs is merged into one line, not printed twice.
+export function formatRequirednessReport(candidates, staleEntries) {
+  const candidateFlat = candidates.flatMap(c => c.requiredDiffs.map(d => ({ snippet: c.name, ...d })));
+  const staleByKey = new Map(staleEntries.map(e => [`${e.snippet}::${e.position}`, e]));
+  const candidateKeys = new Set(candidateFlat.map(c => `${c.snippet}::${c.position}`));
+
+  const newLines = [];
+  const reviewLines = [];
+
+  for (const c of candidateFlat) {
+    const stale = staleByKey.get(`${c.snippet}::${c.position}`);
+    if (stale) {
+      reviewLines.push(`  ${c.snippet}: "${c.arg}" (argument ${c.position}) — recorded required=true, upstream param "${c.upstreamParam}" now defaults to ${c.defaultExpr}; ledger entry also stale: ${stale.status}`);
+    } else {
+      newLines.push(`  ${c.snippet}: "${c.arg}" (argument ${c.position}) — recorded required=true, upstream param "${c.upstreamParam}" now defaults to ${c.defaultExpr} — review runtime behavior before changing schema`);
+    }
+  }
+  for (const e of staleEntries) {
+    if (candidateKeys.has(`${e.snippet}::${e.position}`)) continue;
+    reviewLines.push(`  ${e.snippet}: "${e.arg}" (argument ${e.position}, upstream param "${e.upstreamParam}") — ${e.status}`);
+  }
+
+  const lines = [];
+  if (newLines.length > 0) lines.push('NEW CANDIDATE:', ...newLines);
+  if (reviewLines.length > 0) lines.push('LEDGER ENTRY NEEDS REVIEW:', ...reviewLines);
+  return lines.length > 0 ? 'REQUIREDNESS_REVIEW\n' + lines.join('\n') : '';
 }

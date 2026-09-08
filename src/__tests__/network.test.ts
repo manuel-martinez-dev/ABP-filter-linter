@@ -2,6 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { validateNetworkRule, findOptionsSeparator } from '../validators/network';
 
 describe('validateNetworkRule', () => {
+  it.each(['~document,script', 'script,~document', '~document,~script'])
+    ('preserves negation in incompatibility checks: %s', options => {
+      expect(validateNetworkRule(`||example.com^$${options}`, false, 0)).toEqual([]);
+    });
+
+  it.each(['/foo(?=bar)/', '/foo(?!bar)/', '/(?<=foo)bar/', '/(?<!foo)bar/', '/(ads)\\1/', '/(?<ad>ads)\\k<ad>/'])
+    ('warns about unsupported Chrome regex features: %s', body => {
+      expect(validateNetworkRule(body, false, 2)).toEqual([
+        expect.objectContaining({ severity: 'warning', message: expect.stringContaining('Chrome (MV3)'), startCol: 2, endCol: 2 + body.length }),
+      ]);
+    });
+
+  it.each([String.raw`/foo\(\?=bar\)/`, '/[(?=)]ads/', '/(?:ads)+/', String.raw`/ads\\1/`, String.raw`/ads\123/`, String.raw`/ads\k<literal>/`])
+    ('does not mistake literal or noncapturing syntax for unsupported regex features: %s', body => {
+      expect(validateNetworkRule(body, false, 0)).toEqual([]);
+    });
+
   it('returns no errors for valid rule with no modifiers', () => {
     expect(validateNetworkRule('||ads.example.com^', false, 0)).toHaveLength(0);
   });
@@ -668,13 +685,13 @@ describe('regex body validation', () => {
     expect(err!.message).toBe('Invalid regular expression: Unterminated group');
   });
 
-  it('does not flag a pattern that is only invalid at its literal case (core lowercases first)', () => {
-    expect(validateNetworkRule('/[a-Z]/', false, 0)).toHaveLength(0);
+  it('rejects a range that lowercasing the source would incorrectly accept', () => {
+    const results = validateNetworkRule('/[a-Z]/', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
   });
 
-  it('flags a pattern that is only invalid once core lowercases it', () => {
-    const results = validateNetworkRule('/[U-pc]/', false, 0);
-    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
+  it('accepts a range that lowercasing the source would incorrectly reject', () => {
+    expect(validateNetworkRule('/[U-pc]/', false, 0)).toHaveLength(0);
   });
 
   it('does not lowercase the source when $match-case is set', () => {
@@ -687,7 +704,8 @@ describe('regex body validation', () => {
   });
 
   it('a later ~match-case overrides an earlier match-case (order matters)', () => {
-    expect(validateNetworkRule('/[a-Z]/$match-case,~match-case', false, 0)).toHaveLength(0);
+    const results = validateNetworkRule('/[a-Z]/$match-case,~match-case', false, 0);
+    expect(results.some(r => r.message.includes('Invalid regular expression'))).toBe(true);
   });
 
   it('a later match-case overrides an earlier ~match-case (order matters)', () => {

@@ -50,6 +50,7 @@ export function parseLine(raw: string, lineIndex: number): ParsedLine {
   for (const { sep, type } of SEPARATORS) {
     const idx = trimmed.indexOf(sep);
     if (idx === -1) continue;
+    if (/[/|@"!]/.test(trimmed.slice(0, idx))) continue;
     if (!found || idx < found.idx || (idx === found.idx && sep.length > found.sep.length)) {
       found = { sep, type, idx };
     }

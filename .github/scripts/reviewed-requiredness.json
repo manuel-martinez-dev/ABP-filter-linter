@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "snippet": "replace-outbound-value",
+      "arg": "search",
+      "upstreamParam": "textToReplace",
+      "position": 2,
+      "defaultExpr": "\"\"",
+      "reason": "With search omitted, the empty default bypasses text replacement (processReturnValue builds patternRegexp only when textPattern is truthy; decodeAndReplaceContent/replaceValueAtPath return content unchanged when pattern is falsy — replace-outbound-value.js:275-276, 198-200). Retain the required-search diagnostic as an authoring check; reviewed against this implementation."
+    }
+  ]
+}

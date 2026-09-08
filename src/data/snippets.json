@@ -451,7 +451,7 @@
         },
         {
           "name": "selector",
-          "required": true
+          "required": false
         },
         {
           "name": "searchSelector",
@@ -469,7 +469,7 @@
         },
         {
           "name": "selector",
-          "required": true
+          "required": false
         },
         {
           "name": "searchSelector",
@@ -576,7 +576,7 @@
         },
         {
           "name": "selector",
-          "required": true
+          "required": false
         },
         {
           "name": "searchSelector",
@@ -686,7 +686,7 @@
         },
         {
           "name": "selector",
-          "required": true
+          "required": false
         }
       ]
     },

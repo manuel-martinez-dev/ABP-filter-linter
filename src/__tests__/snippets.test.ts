@@ -1,6 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 
+describe('conditional-hiding selector defaults', () => {
+  const cases = [
+    ['hide-if-shadow-contains', '/./'],
+    ['hide-if-contains', "'Sponsored content'"],
+    ['hide-if-contains-and-matches-style', '/Sponsored/'],
+    ['hide-if-has-and-matches-style', '.sponsored'],
+  ];
+
+  it.each(cases)('%s accepts search with an omitted or explicit selector', (name, search) => {
+    for (const selector of ['', ' *', ' .ad']) {
+      const [call] = splitSnippetChain(`${name} ${search}${selector}`);
+      expect(validateSnippetCall(call, 0)).toEqual([]);
+    }
+  });
+
+  it.each(cases)('%s still requires search', name => {
+    const [call] = splitSnippetChain(name);
+    expect(validateSnippetCall(call, 0)).toEqual([
+      expect.objectContaining({
+        message: `"${name}" requires 1 argument(s) but got 0`,
+        severity: 'warning',
+      }),
+    ]);
+  });
+});
+
 describe('splitSnippetChain arg parsing', () => {
   it('splits simple args', () => {
     expect(splitSnippetChain('log foo bar baz')[0].args).toEqual(['foo', 'bar', 'baz']);
