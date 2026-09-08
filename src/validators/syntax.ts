@@ -21,7 +21,7 @@ export function detectSpacesInDomains(line: string): LintResult | null {
   // Network rules: check $domain= option value
   const dollarIdx = line.lastIndexOf('$');
   if (dollarIdx !== -1) {
-    const optionsPart = line.slice(dollarIdx + 1);
+    const optionsPart = line.slice(dollarIdx + 1).replace(/\s+$/, '');
     const domainOptMatch = optionsPart.match(/(?:^|,)domain=([^,]*)/);
     if (domainOptMatch && domainOptMatch.index !== undefined) {
       const valueStart = dollarIdx + 1 + domainOptMatch.index + domainOptMatch[0].indexOf('=') + 1;

@@ -127,6 +127,37 @@ describe('detectSpacesInDomains', () => {
     expect(result!.severity).toBe('error');
     expect(result!.startCol).toBe(23);
   });
+
+  it('does not flag trailing whitespace as a space inside the domain list', () => {
+    expect(detectSpacesInDomains('@@||afpssp.alimama.com^$domain=1905.com ')).toBeNull();
+  });
+
+  it('does not flag trailing whitespace after a multi-domain list', () => {
+    expect(detectSpacesInDomains('@@/Notice.$script,stylesheet,domain=a.de|b.de ')).toBeNull();
+  });
+
+  it('still flags a genuine space inside the domain list', () => {
+    const result = detectSpacesInDomains('||a.com^$domain=b.com| c.com');
+    expect(result).not.toBeNull();
+    expect(result!.message).toBe('Spaces are not allowed in domain list');
+    expect(result!.startCol).toBe(22);
+    expect(result!.endCol).toBe(23);
+  });
+
+  it('still flags a genuine space when the line also has trailing whitespace', () => {
+    expect(detectSpacesInDomains('||a.com^$domain=b.com| c.com ')).not.toBeNull();
+  });
+
+  it('leaves a clean domain list alone', () => {
+    expect(detectSpacesInDomains('||a.com^$domain=b.com|c.com')).toBeNull();
+  });
+
+  it('still flags a genuine space before a comma when domain= is not the last option', () => {
+    const result = detectSpacesInDomains('||a.com^$domain=b.com ,script');
+    expect(result).not.toBeNull();
+    expect(result!.startCol).toBe(21);
+    expect(result!.endCol).toBe(22);
+  });
 });
 
 describe('detectTrailingWhitespace', () => {
@@ -150,6 +181,10 @@ describe('detectTrailingWhitespace', () => {
 
   it('returns null for snippet filter ending with semicolon and no space', () => {
     expect(detectTrailingWhitespace('example.com#$#race stop;')).toBeNull();
+  });
+
+  it('still reports trailing whitespace on a line with a $domain= option', () => {
+    expect(detectTrailingWhitespace('@@||afpssp.alimama.com^$domain=1905.com ')).not.toBeNull();
   });
 
   it('returns null for blank-only line', () => {
