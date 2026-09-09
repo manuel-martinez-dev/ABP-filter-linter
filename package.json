@@ -48,7 +48,7 @@
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.3.0",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "css-what": "^6.1.0"
