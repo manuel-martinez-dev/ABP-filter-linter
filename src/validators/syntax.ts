@@ -1,6 +1,6 @@
 import type { LintResult } from '../types';
 import type { ParsedLine } from '../parser';
-import { findOptionsSeparator, isRegexFilter } from './network';
+import { findOptionsSeparator, isRegexFilter, hasMalformedWildcard } from './network';
 
 export function detectSpacesInDomains(line: string): LintResult | null {
   // Cosmetic/snippet/extended/hiding-exception: check domain part before separator
@@ -63,6 +63,43 @@ export function detectDoubleComma(line: string): LintResult | null {
   }
 
   return null;
+}
+
+export function validateContentDomainEntries(line: string): LintResult[] {
+  const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
+  if (!sepMatch || sepMatch.index === undefined) return [];
+  if (line.slice(sepMatch.index + sepMatch[0].length).trim() === '') return [];
+  const domainPart = line.slice(0, sepMatch.index);
+  if (!domainPart || /[/|@"!]/.test(domainPart)) return [];
+
+  const results: LintResult[] = [];
+  let cursor = 0;
+  for (const rawEntry of domainPart.split(',')) {
+    const entryStart = cursor;
+    cursor += rawEntry.length + 1;
+
+    const trimmed = rawEntry.trim();
+    if (trimmed === '') continue;
+    const leadingWsOuter = rawEntry.length - rawEntry.trimStart().length;
+
+    const withoutTilde = trimmed.startsWith('~') ? trimmed.slice(1) : trimmed;
+    const tildeLen = trimmed.length - withoutTilde.length;
+
+    const bare = withoutTilde.trimStart();
+    if (bare === '') continue;
+    const innerLeadingWs = withoutTilde.length - bare.length;
+
+    const bareStart = entryStart + leadingWsOuter + tildeLen + innerLeadingWs;
+    const bareEnd = bareStart + bare.length;
+
+    const normalized = bare.replace(/\s+/g, '');
+    if (normalized.includes('?')) {
+      results.push({ message: `Domain "${bare}" must not contain "?"`, severity: 'error', startCol: bareStart, endCol: bareEnd });
+    } else if (hasMalformedWildcard(normalized)) {
+      results.push({ message: `Invalid wildcard in domain "${bare}" — only a single trailing ".*" is allowed`, severity: 'error', startCol: bareStart, endCol: bareEnd });
+    }
+  }
+  return results;
 }
 
 /** Empty or "~"-only entries in a content-filter domain list */

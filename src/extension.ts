@@ -5,7 +5,7 @@ import { isRestrictedByDomain } from './validators/utils';
 import { validateNetworkRule } from './validators/network';
 import { checkEmptyBody, checkGenericBodyLength, validateCosmeticSelector } from './validators/cosmetic';
 import { validateExtendedSelector } from './validators/extended';
-import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from './validators/syntax';
+import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey, validateContentDomainEntries } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 import type { LintResult } from './types';
 
@@ -76,6 +76,10 @@ export function activate(context: vscode.ExtensionContext) {
 
       const spacesInDomains = detectSpacesInDomains(lines[i]);
       if (spacesInDomains) diagnostics.push(toDiagnostic(spacesInDomains, i, doc));
+
+      for (const invalidDomainEntry of validateContentDomainEntries(lines[i])) {
+        diagnostics.push(toDiagnostic(invalidDomainEntry, i, doc));
+      }
 
       const trailingWs = detectTrailingWhitespace(lines[i]);
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));

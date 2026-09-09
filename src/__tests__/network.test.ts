@@ -265,6 +265,11 @@ describe('domain= entry shape', () => {
     expect(results.filter(r => r.message.includes('empty entry'))).toHaveLength(1);
     expect(results.filter(r => r.message.includes('not a valid domain'))).toHaveLength(1);
   });
+
+  it('wildcard message is byte-identical (regression guard for the content-domain extraction)', () => {
+    const results = validateNetworkRule('||a.com^$domain=shop*.com', false, 0);
+    expect(results[0].message).toBe('Invalid wildcard in "domain=" entry "shop*.com" — only a single trailing ".*" is allowed');
+  });
 });
 
 describe('rewrite validation', () => {

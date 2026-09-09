@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey } from '../validators/syntax';
+import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey, validateContentDomainEntries } from '../validators/syntax';
 import { parseLine } from '../parser';
 
 describe('detectDoubleComma', () => {
@@ -311,5 +311,108 @@ describe('detectDomainListEdges', () => {
 
   it('returns null for |-anchored network rules with ",#" sequences', () => {
     expect(detectDomainListEdges('||example.com/a,##b^$script')).toBeNull();
+  });
+});
+
+describe('validateContentDomainEntries', () => {
+  it('flags a mid-label wildcard', () => {
+    const results = validateContentDomainEntries('shop*.com##.ad-banner');
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('wildcard');
+  });
+
+  it('flags a bare single-* domain', () => {
+    const results = validateContentDomainEntries('*##.ad');
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+  });
+
+  it('flags a wildcard on a bare label in a multi-domain prefix', () => {
+    const results = validateContentDomainEntries('site.com,site.net*##.ad-overlay');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('site.net*');
+  });
+
+  it('flags a negated malformed wildcard, highlighting only the domain', () => {
+    const results = validateContentDomainEntries('example.com,~shop*.com##.ad');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('shop*.com');
+    expect(results[0].startCol).toBe(13);
+    expect(results[0].endCol).toBe(22);
+  });
+
+  it('flags a negated malformed wildcard with whitespace before the "~"', () => {
+    const results = validateContentDomainEntries('example.com, ~shop*.com##.ad');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('shop*.com');
+    expect(results[0].startCol).toBe(14);
+    expect(results[0].endCol).toBe(23);
+    expect(detectSpacesInDomains('example.com, ~shop*.com##.ad')).not.toBeNull();
+  });
+
+  it('flags "?" in a domain entry', () => {
+    const results = validateContentDomainEntries('example.com,bad?domain##.ad');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('?');
+  });
+
+  it('flags each invalid entry on a line with two', () => {
+    const results = validateContentDomainEntries('shop*.com,ba*r.com##.ad');
+    expect(results).toHaveLength(2);
+    expect(results[0].startCol).toBe(0);
+    expect(results[0].endCol).toBe(9);
+    expect(results[1].startCol).toBe(10);
+    expect(results[1].endCol).toBe(18);
+  });
+
+  it.each([
+    'example.com.*##.ad',
+    'example.*##.ad',
+    'example.com.*#?#div:-abp-contains(x)',
+    'example.com.*#@#.ad',
+    'example.com.*#$#log',
+  ])('does not flag a legal trailing .* wildcard: %s', text => {
+    expect(validateContentDomainEntries(text)).toHaveLength(0);
+  });
+
+  it('does not flag a legal wildcard followed by whitespace before the separator', () => {
+    expect(validateContentDomainEntries('example.* ##.ad')).toHaveLength(0);
+  });
+
+  it('leaves empty/~-only entries to detectDomainListEdges', () => {
+    expect(validateContentDomainEntries('example.com,,foo.com##.ad')).toHaveLength(0);
+    expect(validateContentDomainEntries('example.com,~,foo.com##.ad')).toHaveLength(0);
+  });
+
+  it('leaves a clean multi-domain list alone', () => {
+    expect(validateContentDomainEntries('example.com,foo.com##.ad')).toHaveLength(0);
+  });
+
+  it.each(['/foo,,bar##baz/', '/foo bar#$#baz/'])('ignores network/regex patterns: %s', text => {
+    expect(validateContentDomainEntries(text)).toHaveLength(0);
+  });
+
+  it('does not flag a "!" domain-list line — it is not a content filter at all', () => {
+    expect(validateContentDomainEntries('example.com,bad!!domain##.ad')).toHaveLength(0);
+  });
+
+  it.each(['shop*.com##', 'shop*.com## ', 'shop*.com##\t'])(
+    'does not flag a wildcard domain on a line with an empty (or whitespace-only) body — not a content filter at all: %s',
+    text => {
+      expect(validateContentDomainEntries(text)).toHaveLength(0);
+    }
+  );
+
+  it('does not flag a valid wildcard with internal whitespace — Filter.normalize strips it before the real engine sees it', () => {
+    expect(validateContentDomainEntries('example. *##.ad')).toHaveLength(0);
+    expect(validateContentDomainEntries('example.\t*##.ad')).toHaveLength(0);
+    expect(detectSpacesInDomains('example. *##.ad')).not.toBeNull();
+  });
+
+  it('still flags a wildcard that stays malformed after whitespace is stripped', () => {
+    const results = validateContentDomainEntries('exa mple*.com##.ad');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('exa mple*.com');
   });
 });

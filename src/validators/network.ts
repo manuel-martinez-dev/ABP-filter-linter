@@ -23,7 +23,7 @@ const DOMAIN_ENTRY_RE = /^[\w-]+(\.[\w-]+)*$/;
 const NEGATION_IGNORED = new Set(['domain', 'rewrite', 'sitekey']);
 
 /** ABP core isValidDomainWildcard: at most one "*", last char only, preceded by "." */
-function hasMalformedWildcard(entry: string): boolean {
+export function hasMalformedWildcard(entry: string): boolean {
   const stars = (entry.match(/\*/g) ?? []).length;
   if (stars === 0) return false;
   if (stars > 1) return true;
