@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const scriptsDir = fileURLToPath(new URL('../../', import.meta.url));
 
-function runFixture({ extraArg = false, newHeavy = false, scopeDefault = '""', scopeUpstreamName = 'scope', ledgerEntries } = {}) {
+function runFixture({ extraArg = false, newHeavy = false, scopeDefault = '""', scopeUpstreamName = 'scope', ledgerEntries, fooBody = '', fooDefinition, xpathDocs = '', corruptAst } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'snippet-check-'));
   try {
     const scripts = path.join(root, '.github/scripts');
@@ -15,14 +15,34 @@ function runFixture({ extraArg = false, newHeavy = false, scopeDefault = '""', s
     mkdirSync(path.join(scripts, 'lib'), { recursive: true });
     mkdirSync(path.join(root, 'src/data'), { recursive: true });
     mkdirSync(path.join(pkg, 'webext'), { recursive: true });
+    const compilerDir = path.join(root, 'node_modules/typescript');
+    mkdirSync(compilerDir, { recursive: true });
+    copyFileSync(fileURLToPath(import.meta.resolve('typescript')), path.join(compilerDir, 'typescript.js'));
+    writeFileSync(path.join(compilerDir, 'package.json'), JSON.stringify({ main: 'typescript.js' }));
+    if (corruptAst) {
+      writeFileSync(path.join(compilerDir, 'package.json'), JSON.stringify({ main: 'fault-injection.js' }));
+      writeFileSync(path.join(compilerDir, 'fault-injection.js'), `
+        const ts = require('./typescript.js');
+        module.exports = { ...ts, createSourceFile(...args) {
+          const tree = ts.createSourceFile(...args);
+          const first = tree.statements[0];
+          const replacement = ${JSON.stringify(corruptAst)} === 'statement'
+            ? ts.factory.createEmptyStatement()
+            : ts.factory.updateFunctionDeclaration(first, first.modifiers, first.asteriskToken,
+                ts.factory.createIdentifier('unexpected'), first.typeParameters, first.parameters, first.type, first.body);
+          tree.statements = ts.factory.createNodeArray([replacement, ...tree.statements.slice(1)]);
+          return tree;
+        } };
+      `);
+    }
     copyFileSync(path.join(scriptsDir, 'check-snippets.mjs'), path.join(scripts, 'check-snippets.mjs'));
     copyFileSync(path.join(scriptsDir, 'lib/snippet-diff.mjs'), path.join(scripts, 'lib/snippet-diff.mjs'));
     writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@eyeo/snippets', version: '2.15.0' }));
     writeFileSync(path.join(pkg, 'webext/snippets.source.mjs'),
-      'function foo(a) {} const snippets$1 = { foo }; const graph = new Map([["foo",null]]);');
+      `${fooDefinition ?? `function foo(a) { ${fooBody} }`} const snippets$1 = { foo }; const graph = new Map([["foo",null]]);`);
     const scopeParam = `${scopeUpstreamName}${scopeDefault !== null ? ` = ${scopeDefault}` : ''}`;
     writeFileSync(path.join(pkg, 'webext/isolated-heavy.source.mjs'),
-      `function xpath(query, ${scopeParam}${extraArg ? ', extra=""' : ''}) {} const snippets = { "xpath": xpath }; const graph = new Map([["xpath",function dependency() { return ["ignored",null]; }]]);`);
+      `${xpathDocs}\nfunction xpath(query, ${scopeParam}${extraArg ? ', extra=""' : ''}) {} const snippets = { "xpath": xpath }; const graph = new Map([["xpath",function dependency() { return ["ignored",null]; }]]);`);
     const data = { snippets: { foo: { args: [{ name: 'a', required: false }] } }, deprecated: {} };
     if (!newHeavy) data.snippets.xpath = { args: [{ name: 'query', required: true }, { name: 'scope', required: true }] };
     const dataPath = path.join(root, 'src/data/snippets.json');
@@ -42,6 +62,46 @@ function runFixture({ extraArg = false, newHeavy = false, scopeDefault = '""', s
 }
 
 describe('check-snippets workflow', () => {
+  it.each(['function foo(a) { return toRegExp(a);', 'function foo() {', ''])('fails incomplete extraction before writing discoveries: %s', fooDefinition => {
+    const run = runFixture({ fooDefinition, newHeavy: true });
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stderr).toContain('SNIPPET_ANALYSIS_FAILED:');
+    expect(run.stdout).not.toContain('DRIFT_DETECTED');
+    expect(run.after).toBe(run.before);
+  });
+
+  it.each([
+    ['/** @since Adblock Plus 4.42.0 */', '4.42.0'],
+    ['', 'unknown'],
+    ['/** @since Adblock Plus TBD */', 'unknown'],
+    ['/** @since Adblock Plus 4.42.0 */ function previous() {}', 'unknown'],
+  ])('uses attached ABP documentation for discovery: %s', (xpathDocs, since) => {
+    const run = runFixture({ newHeavy: true, xpathDocs });
+    expect(run.status, run.stderr).toBe(2);
+    expect(JSON.parse(run.after).snippets.xpath.since).toBe(since);
+    expect(run.stdout.includes('SINCE_REVIEW:')).toBe(since === 'unknown');
+  });
+
+  it.each(['statement', 'name'])('reports AST %s mismatch as analysis failure, not drift', corruptAst => {
+    const run = runFixture({ corruptAst, fooBody: 'return toRegExp(a);' });
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stderr).toContain('SNIPPET_ANALYSIS_FAILED: Regex analysis structure mismatch');
+    expect(run.stdout).not.toContain('DRIFT_DETECTED');
+    expect(run.after).toBe(run.before);
+  });
+
+  it('reports invalid generated syntax as analysis failure', () => {
+    const run = runFixture({ fooBody: 'return (;' });
+    expect(run.status, run.stderr).toBe(1);
+    expect(run.stderr).toContain('SNIPPET_ANALYSIS_FAILED: Regex analysis generated invalid JavaScript');
+    expect(run.after).toBe(run.before);
+  });
+  it('reports newly compiled regex arguments without modifying the schema', () => {
+    const run = runFixture({ fooBody: 'return toRegExp(a);' });
+    expect(run.status, run.stderr).toBe(3);
+    expect(run.stdout).toContain('regex drift on "a"');
+    expect(run.after).toBe(run.before);
+  });
   it('reports requiredness candidates without failing or changing schemas', () => {
     const run = runFixture();
     expect(run.status, run.stderr).toBe(0);
@@ -138,6 +198,9 @@ describe('check-snippets workflow', () => {
       { snippet: 'xpath', arg: '', upstreamParam: 'scope', position: 2, defaultExpr: '""', reason: 'test' },
     ] });
     expect(run.status).not.toBe(0);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('SNIPPET_ANALYSIS_FAILED:');
+    expect(run.stdout).not.toContain('DRIFT_DETECTED');
     expect(run.stderr).toMatch(/must be a non-empty string/);
   });
 });

@@ -13,6 +13,10 @@ function inspect(name) {
     const pkg = path.join(root, 'node_modules/@eyeo/snippets');
     mkdirSync(path.join(root, 'lib'), { recursive: true });
     mkdirSync(path.join(pkg, 'webext'), { recursive: true });
+    const compilerDir = path.join(root, 'node_modules/typescript');
+    mkdirSync(compilerDir, { recursive: true });
+    copyFileSync(fileURLToPath(import.meta.resolve('typescript')), path.join(compilerDir, 'typescript.js'));
+    writeFileSync(path.join(compilerDir, 'package.json'), JSON.stringify({ main: 'typescript.js' }));
     copyFileSync(path.join(scriptsDir, 'inspect-snippet.mjs'), path.join(root, 'inspect-snippet.mjs'));
     copyFileSync(path.join(scriptsDir, 'lib/snippet-diff.mjs'), path.join(root, 'lib/snippet-diff.mjs'));
     writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@eyeo/snippets', version: '2.15.0' }));

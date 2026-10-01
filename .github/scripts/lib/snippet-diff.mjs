@@ -1,4 +1,5 @@
 // Pure parsing/comparison logic for the check-snippets watcher — no file I/O or process.exit.
+import ts from 'typescript';
 
 export const SNIPPET_SOURCE_FILES = ['snippets.source.mjs', 'isolated-heavy.source.mjs'];
 
@@ -233,13 +234,84 @@ function detectEnum(paramName, bodySlice, preSlice) {
   return null;
 }
 
-// Returns null (not []) when funcName resolved but its definition wasn't found — distinct from a genuine zero-arg function.
+const regexAnalysisCache = new WeakMap();
+
+function regexParamsByFunction(sourceText, nameMap) {
+  const cached = regexAnalysisCache.get(nameMap);
+  if (cached?.sourceText === sourceText) return cached.result;
+  const functions = [];
+  for (const name of new Set(nameMap.values())) {
+    const { rawParams, closeParenIdx, funcStart } = extractSignature(sourceText, name);
+    if (funcStart === -1) continue;
+    const start = sourceText.indexOf('{', closeParenIdx);
+    const end = start === -1 ? -1 : walkBraces(sourceText, start);
+    if (end === -1) throw new Error(`Incomplete function body: ${name}`);
+    functions.push({ name, rawParams, body: sourceText.slice(start, end + 1) });
+  }
+  const result = new Map();
+  if (!functions.length) return result;
+  const filename = '/snippet-analysis/snippet.js';
+  const generatedFunctions = new Map(functions.map((fn, i) => [`snippet_${i}`, fn]));
+  const source = [...generatedFunctions].map(([id, fn]) => `function ${id}(${fn.rawParams}) ${fn.body}`).join('\n');
+  const options = { allowJs: true, noLib: true, noResolve: true, noEmit: true, types: [], typeRoots: [] };
+  const tree = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  if (tree.parseDiagnostics.length) throw new Error('Regex analysis generated invalid JavaScript');
+  const declarations = new Map();
+  for (const statement of tree.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.body ||
+        !generatedFunctions.has(statement.name.text) || declarations.has(statement.name.text)) {
+      throw new Error('Regex analysis structure mismatch: unexpected or duplicate function declaration');
+    }
+    declarations.set(statement.name.text, statement);
+  }
+  if (declarations.size !== generatedFunctions.size) {
+    throw new Error('Regex analysis structure mismatch: missing function declaration');
+  }
+  const host = {
+    getSourceFile: name => name === filename ? tree : undefined,
+    fileExists: name => name === filename,
+    readFile: name => name === filename ? source : undefined,
+    getDefaultLibFileName: () => '',
+    getCurrentDirectory: () => '/snippet-analysis',
+    getCanonicalFileName: name => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => '\n',
+    directoryExists: () => false,
+    getDirectories: () => [],
+    readDirectory: () => [],
+    realpath: name => name,
+    writeFile: () => { throw new Error('Snippet analysis must not write files'); },
+  };
+  const checker = ts.createProgram([filename], options, host).getTypeChecker();
+  for (const [id, fn] of declarations) {
+    const names = new Set();
+    const params = new Map(fn.parameters
+      .filter(param => ts.isIdentifier(param.name))
+      .map(param => [checker.getSymbolAtLocation(param.name), param.name.text]));
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+          /^to(?:Global)?RegExp(?:\$\d+)?$/.test(node.expression.text)) {
+        const arg = node.arguments[0];
+        const param = arg && ts.isIdentifier(arg) && params.get(checker.getSymbolAtLocation(arg));
+        if (param && !checker.getSymbolAtLocation(node.expression)) names.add(param);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(fn);
+    result.set(generatedFunctions.get(id).name, names);
+  }
+  regexAnalysisCache.set(nameMap, { sourceText, result });
+  return result;
+}
+
+// Returns null when a mapped function's definition cannot be found.
 export function parseSnippetArgs(snippetName, sourceText, nameMap) {
   const funcName = nameMap.get(snippetName);
   if (!funcName) return [];
 
   const { rawParams, closeParenIdx, funcStart } = extractSignature(sourceText, funcName);
   if (funcStart === -1) return null;
+  const regexParams = regexParamsByFunction(sourceText, nameMap).get(funcName) ?? new Set();
   if (!rawParams || rawParams.trim() === '') return [];
 
   const tokens = splitParams(rawParams);
@@ -263,11 +335,25 @@ export function parseSnippetArgs(snippetName, sourceText, nameMap) {
 
     const enumVals = detectEnum(parsed.name, bodySlice, preSlice);
     if (enumVals && enumVals.length > 0) argEntry.enum = enumVals;
+    if (regexParams.has(parsed.name)) argEntry.regex = true;
 
     args.push(argEntry);
   }
 
   return args;
+}
+
+export function parseSnippetSince(snippetName, sourceText, nameMap) {
+  const funcName = nameMap.get(snippetName);
+  if (!funcName) return 'unknown';
+  const { funcStart } = extractSignature(sourceText, funcName);
+  if (funcStart === -1) return 'unknown';
+  const prefix = sourceText.slice(0, funcStart).replace(/(?:export\s+(?:default\s+)?)?$/, '').trimEnd();
+  if (!prefix.endsWith('*/')) return 'unknown';
+  const start = prefix.lastIndexOf('/*');
+  if (start === -1 || prefix[start + 2] !== '*') return 'unknown';
+  const doc = prefix.slice(start);
+  return /@since\s+Adblock Plus\s+(\d+\.\d+\.\d+)(?=\s|\*\/)/.exec(doc)?.[1] ?? 'unknown';
 }
 
 export function compareArgs(recorded, upstreamArgs) {
@@ -279,6 +365,13 @@ export function compareArgs(recorded, upstreamArgs) {
 
   const enumDiffs = [];
   const requiredDiffs = [];
+  const regexDiffs = [];
+  for (let i = 0; i < Math.min(recorded.length, upstreamArgs.length); i++) {
+    // Absence of a direct call is inconclusive: helpers may compile the argument.
+    if (upstreamArgs[i].regex && !recorded[i].regex) {
+      regexDiffs.push({ arg: recorded[i].name, upstreamParam: upstreamArgs[i].name });
+    }
+  }
   const fixedLen = Math.min(recordedPrefixLen, upstreamPrefixLen);
   for (let i = 0; i < fixedLen; i++) {
     // Flag required arguments with upstream defaults for review.
@@ -301,7 +394,7 @@ export function compareArgs(recorded, upstreamArgs) {
     }
   }
 
-  return { arityGrew, enumDiffs, requiredDiffs };
+  return { arityGrew, enumDiffs, requiredDiffs, regexDiffs };
 }
 
 export function formatDriftReport(drifted, unresolved) {
@@ -310,7 +403,10 @@ export function formatDriftReport(drifted, unresolved) {
     const enumLines = d.enumDiffs
       .map(e => `; enum drift on "${e.arg}": recorded=[${e.recorded.join(', ')}] upstream=[${e.upstream.join(', ')}]`)
       .join('');
-    return base + enumLines;
+    const regexLines = (d.regexDiffs ?? [])
+      .map(arg => `; regex drift on "${arg.arg}": upstream compiles "${arg.upstreamParam}" — review regex schema`)
+      .join('');
+    return base + enumLines + regexLines;
   });
   const unresolvedLines = unresolved.map(u => `${u.name}: UNRESOLVED — ${u.reason}, drift checks skipped for this snippet`);
   const allLines = [...driftLines, ...unresolvedLines];

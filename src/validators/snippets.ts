@@ -12,6 +12,9 @@ interface ArgSchema {
   enum?: string[];
   allowsNumericLiteral?: boolean;
   numeric?: boolean;
+  regex?: boolean | 'comma-separated' | 'space-separated' | 'unflagged';
+  regexPrefix?: string;
+  when?: { arg: number; equals: string; required?: boolean };
 }
 
 interface SnippetSchema {
@@ -156,6 +159,7 @@ function parseSnippetArgsDetailed(body: string): ParsedArgDetail[] {
 export interface SnippetCall {
   name: string;
   args: string[];
+  runtimeArgs?: Array<string | null>;
   /** source-accurate column ranges for each arg, relative to the snippet body start */
   argOffsets?: Array<{ start: number; end: number }>;
   /** char offset of the snippet name within the body */
@@ -232,11 +236,104 @@ export function splitSnippetChain(body: string): SnippetCall[] {
     const argBodyBase = nameOffset + name.length + 1;
     const argOffsets = detailed.map(a => ({ start: argBodyBase + a.start, end: argBodyBase + a.end }));
 
-    calls.push({ name, args, argOffsets, nameOffset });
+    const runtimeArgs = detailed.map(a => decodeSnippetArgument(argBody.slice(a.start, a.end)));
+    calls.push({ name, args, runtimeArgs, argOffsets, nameOffset });
     offset += part.length + 1;
   }
 
   return calls;
+}
+
+function decodeSnippetArgument(raw: string, offsets?: Array<{ start: number; end: number }>): string | null {
+  let value = '';
+  for (let i = 0; i < raw.length;) {
+    const start = i;
+    let character = raw[i++];
+    if (character === '\\') {
+      if (i === raw.length) return null;
+      character = raw[i++];
+      if (character === 'u') {
+        const hex = raw.slice(i, i + 4);
+        // Malformed Unicode escapes can consume argument boundaries in ABP's parser.
+        if (!/^[\da-fA-F]{4}$/.test(hex)) return null;
+        character = String.fromCharCode(parseInt(hex, 16));
+        i += 4;
+      } else {
+        character = ({ n: '\n', r: '\r', t: '\t' } as Record<string, string>)[character] ?? character;
+      }
+    }
+    value += character;
+    offsets?.push({ start, end: i });
+  }
+  return value;
+}
+
+function argumentSchema(schema: SnippetSchema, index: number): ArgSchema | undefined {
+  const last = schema.args[schema.args.length - 1];
+  return schema.args[index] ?? (last?.variadic ? last : undefined);
+}
+
+function activeArgument(arg: ArgSchema, args: Array<string | null>): boolean {
+  return !arg.when || args[arg.when.arg] === arg.when.equals;
+}
+
+function regexParts(pattern: string): { source: string; flags: string } | null {
+  const end = pattern[0] === '/' ? pattern.lastIndexOf('/') : 0;
+  return end > 0 ? { source: pattern.slice(1, end), flags: pattern.slice(end + 1) } : null;
+}
+
+function regexPatterns(value: string, arg: ArgSchema): string[] {
+  if (arg.regexPrefix && value.startsWith(arg.regexPrefix)) value = value.slice(arg.regexPrefix.length);
+  const mode = arg.regex;
+  return mode === 'comma-separated' ? value.split(',').map(s => s.trim())
+    : mode === 'space-separated' ? value.split(/ +/) : [value];
+}
+
+function hasMalformedRegex(value: string, arg: ArgSchema): boolean {
+  return regexPatterns(value, arg).some(pattern => {
+    if (arg.regex === 'unflagged' && !pattern.endsWith('/')) return false;
+    const parts = regexParts(pattern);
+    if (!parts) return false;
+    try {
+      new RegExp(parts.source, parts.flags);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+}
+
+const regexChecks = new WeakMap<SnippetCall, { key: string; invalid: Set<number> }>();
+
+function malformedRegexArguments(call: SnippetCall): Set<number> {
+  const args = call.runtimeArgs ?? call.args;
+  const key = JSON.stringify([call.name, args]);
+  const cached = regexChecks.get(call);
+  if (cached?.key === key) return cached.invalid;
+  const invalid = new Set<number>();
+  const schema = SNIPPETS[call.name];
+  if (schema) args.forEach((value, index) => {
+    const arg = argumentSchema(schema, index);
+    if (value !== null && arg?.regex && activeArgument(arg, args) && hasMalformedRegex(value, arg)) invalid.add(index);
+  });
+  regexChecks.set(call, { key, invalid });
+  return invalid;
+}
+
+function argumentRanges(call: SnippetCall, bodyOffset: number): Array<{ startCol: number; endCol: number }> {
+  let start = bodyOffset + call.nameOffset + call.name.length + 1;
+  return call.args.map((raw, index) => {
+    const offset = call.argOffsets?.[index];
+    const range = offset
+      ? { startCol: bodyOffset + offset.start, endCol: bodyOffset + offset.end }
+      : { startCol: start, endCol: start + raw.length };
+    start += raw.length + 1;
+    return range;
+  });
+}
+
+function hasDecodingFailure(call: SnippetCall): boolean {
+  return call.runtimeArgs?.includes(null) === true;
 }
 
 export function validateSnippetCall(
@@ -244,9 +341,21 @@ export function validateSnippetCall(
   bodyOffset: number
 ): LintResult[] {
   const results: LintResult[] = [];
-  const { name, args, nameOffset } = call;
+  const { name, nameOffset } = call;
+  const args = call.runtimeArgs ?? call.args;
   const absStart = bodyOffset + nameOffset;
   const absEnd = absStart + name.length;
+  const ranges = argumentRanges(call, bodyOffset);
+  const decodeFailed = hasDecodingFailure(call);
+  if (decodeFailed) {
+    args.forEach((value, index) => {
+      if (value === null) results.push({
+        message: `Invalid escape in argument ${index + 1} of "${name}" — use four hexadecimal digits after \\u and complete any trailing escape`,
+        severity: 'error',
+        ...ranges[index],
+      });
+    });
+  }
 
   // Deprecated check
   if (DEPRECATED[name]) {
@@ -273,6 +382,7 @@ export function validateSnippetCall(
     return results;
   }
 
+  if (decodeFailed) return results;
   const schema = SNIPPETS[name];
 
   // Debugging snippets should not appear in the live list
@@ -309,9 +419,10 @@ export function validateSnippetCall(
   }
 
   // Too-many-args check for non-variadic snippets
-  if (!variadicArg && args.length > schema.args.length && name !== 'event-override') {
+  const maxArgs = schema.args.filter(arg => activeArgument(arg, args)).length;
+  if (!variadicArg && args.length > maxArgs) {
     results.push({
-      message: `"${name}" accepts at most ${schema.args.length} argument(s) but got ${args.length}`,
+      message: `"${name}" accepts at most ${maxArgs} argument(s) but got ${args.length}`,
       severity: 'warning',
       startCol: absStart,
       endCol: absEnd,
@@ -320,19 +431,23 @@ export function validateSnippetCall(
 
   // Arg-level validation: enum + demarcators
   const demarcatorRules = FORBIDDEN_DEMARCATORS[name];
-  let argSearchOffset = bodyOffset + nameOffset + name.length + 1;
+  const invalidRegexes = malformedRegexArguments(call);
 
-  for (let i = 0; i < schema.args.length; i++) {
-    const argSchema = schema.args[i];
+  for (let i = 0; i < args.length; i++) {
+    const argSchema = argumentSchema(schema, i);
+    if (!argSchema) break;
     const argVal = args[i];
-    if (argVal === undefined) break;
+    if (argVal === null || argVal === undefined) continue;
+    const { startCol: argStart, endCol: argEnd } = ranges[i];
 
-    const argStart = call.argOffsets?.[i] !== undefined
-      ? bodyOffset + call.argOffsets[i].start
-      : argSearchOffset;
-    const argEnd = call.argOffsets?.[i] !== undefined
-      ? bodyOffset + call.argOffsets[i].end
-      : argSearchOffset + argVal.length;
+    if (invalidRegexes.has(i)) {
+      results.push({
+        message: `Malformed regex in "${argSchema.name}" of "${name}" — the snippets library treats it as literal text`,
+        severity: 'warning',
+        startCol: argStart,
+        endCol: argEnd,
+      });
+    }
 
     // Enum validation
     if (argSchema.enum && !argSchema.enum.includes(argVal)) {
@@ -364,11 +479,12 @@ export function validateSnippetCall(
           for (const token of rule.tokens) {
             if (argVal.includes(token)) {
               const tokenPos = argVal.indexOf(token);
+              const decoded = argVal !== call.args[i] || argEnd - argStart !== argVal.length;
               results.push({
                 message: `"${token}" is not supported in the "${argSchema.name}" argument of "${name}"`,
                 severity: 'error',
-                startCol: argStart + tokenPos,
-                endCol: argStart + tokenPos + token.length,
+                startCol: decoded ? argStart : argStart + tokenPos,
+                endCol: decoded ? argEnd : argStart + tokenPos + token.length,
               });
             }
           }
@@ -376,23 +492,16 @@ export function validateSnippetCall(
       }
     }
 
-    if (!call.argOffsets) argSearchOffset += argVal.length + 1;
   }
 
   // Nested snippet call pasted into an argument (checks every arg, not just schema slots).
   // Debugging snippets take free text / log-filter patterns, so their args are exempt.
   if (schema.category !== 'debugging') {
-    let nestedSearchOffset = bodyOffset + nameOffset + name.length + 1;
     for (let i = 0; i < args.length; i++) {
       const argVal = args[i];
-      const nested = findNestedSnippetName(argVal);
+      const nested = argVal === null || argVal === undefined ? null : findNestedSnippetName(argVal);
       if (nested) {
-        const argStart = call.argOffsets?.[i] !== undefined
-          ? bodyOffset + call.argOffsets[i].start
-          : nestedSearchOffset;
-        const argEnd = call.argOffsets?.[i] !== undefined
-          ? bodyOffset + call.argOffsets[i].end
-          : nestedSearchOffset + argVal.length;
+        const { startCol: argStart, endCol: argEnd } = ranges[i];
         results.push({
           message: `Argument looks like a nested "${nested}" snippet call — check quoting`,
           severity: 'warning',
@@ -400,25 +509,13 @@ export function validateSnippetCall(
           endCol: argEnd,
         });
       }
-      nestedSearchOffset += argVal.length + 1;
     }
   }
 
-  // event-override: property/pattern only apply (and are required) in rewrite mode
-  if (name === 'event-override') {
-    const mode = args[1];
-    const maxArgs = mode === 'rewrite' ? schema.args.length : 3;
-    if (args.length > maxArgs) {
+  for (const [index, arg] of schema.args.entries()) {
+    if (arg.when?.required && activeArgument(arg, args) && args[index] !== null && !args[index]) {
       results.push({
-        message: `"${name}" accepts at most ${maxArgs} argument(s) but got ${args.length}`,
-        severity: 'warning',
-        startCol: absStart,
-        endCol: absEnd,
-      });
-    }
-    if (mode === 'rewrite' && (!args[3] || !args[4])) {
-      results.push({
-        message: `"${name}" in "rewrite" mode requires "property" and "pattern" arguments`,
+        message: `"${name}" in "${arg.when.equals}" mode requires "${arg.name}"`,
         severity: 'error',
         startCol: absStart,
         endCol: absEnd,
@@ -428,7 +525,7 @@ export function validateSnippetCall(
 
   // Race winners must be a positive integer
   if (name === 'race' && args[0] === 'start' && args.length > 1) {
-    if (!/^\d+$/.test(args[1]) || parseInt(args[1], 10) < 1) {
+    if (args[1] !== null && (!/^\d+$/.test(args[1]) || parseInt(args[1], 10) < 1)) {
       results.push({
         message: `"race" winners count must be a positive integer, got "${args[1]}"`,
         severity: 'error',
@@ -506,14 +603,22 @@ export function detectUnquotedRegexBreaks(body: string, calls: SnippetCall[], bo
 
 // adblockpluscore's singleCharacterEscapes only maps n/r/t; any other \X drops the backslash
 const LOST_ESCAPE_CLASS_CHARS = new Set(['s', 'S', 'd', 'D', 'w', 'W', 'b', 'B']);
-// excludes "/", "{", "}" — toRegExp() never sets the "u" flag, so those stay literal unescaped anyway
-const LOST_ESCAPE_METACHARS = new Set(['.', '^', '$', '*', '+', '?', '(', ')', '[', ']', '|']);
+const LOST_ESCAPE_METACHARS = new Set(['.', '^', '$', '*', '+', '?', '(', ')', '[', ']', '|', '{', '}']);
 
-// toRegExp()'s own shape test — quotes don't exempt an arg from it, since ABP strips them before
-// the snippet ever sees the value; only the space/";" tokenizer cares about quoting, not this
-function looksLikeRegexLiteral(raw: string): boolean {
-  if (raw.length < 2 || raw[0] !== '/') return false;
-  return raw[raw.length - 1] === '/' || (raw.length > 2 && raw.endsWith('/i'));
+function isQuantifierBrace(pattern: string, index: number): boolean {
+  const parts = regexParts(pattern);
+  if (!parts) return false;
+  let inClass = false;
+  for (let i = 0; i < parts.source.length; i++) {
+    const ch = parts.source[i];
+    if (ch === '\\') { i++; continue; }
+    if (ch === '[') inClass = true;
+    if (ch === ']') inClass = false;
+    if (ch !== '{' || inClass) continue;
+    const quantifier = /^\{\d+(?:,\d*)?\}/.exec(parts.source.slice(i));
+    if (quantifier && (index === i + 1 || index === i + quantifier[0].length)) return true;
+  }
+  return false;
 }
 
 /** Regex-literal snippet args (quoted or not) where ABP's parser silently drops an unrecognized escape's backslash */
@@ -522,28 +627,44 @@ export function detectLostRegexEscapes(body: string, calls: SnippetCall[], bodyO
   if (!body.includes('\\')) return results;
 
   for (const call of calls) {
-    if (!call.argOffsets) continue;
-    for (const off of call.argOffsets) {
+    if (!call.argOffsets || hasDecodingFailure(call)) continue;
+    const schema = SNIPPETS[call.name];
+    if (!schema || DEPRECATED[call.name]) continue;
+    const args = call.runtimeArgs ?? call.args;
+    for (const [index, off] of call.argOffsets.entries()) {
+      const arg = argumentSchema(schema, index);
+      const value = args[index];
+      if (!arg?.regex || value === null || value === undefined || !activeArgument(arg, args)) continue;
+      if (malformedRegexArguments(call).has(index)) continue;
       const raw = body.slice(off.start, off.end);
-      if (!looksLikeRegexLiteral(raw)) continue;
-
-      for (let i = 0; i < raw.length; i++) {
-        if (raw[i] !== '\\' || i + 1 >= raw.length) continue;
-        const next = raw[i + 1];
-        const isClass = LOST_ESCAPE_CLASS_CHARS.has(next);
-        const isMeta = LOST_ESCAPE_METACHARS.has(next);
-        if (isClass || isMeta) {
-          const abs = bodyOffset + off.start + i;
-          results.push({
-            message: isClass
-              ? `Escaped "\\${next}" loses its backslash in ABP's snippet parser and becomes a literal "${next}" (regex class/boundary lost) — use "\\\\${next}" if that's intended`
-              : `Escaped "\\${next}" loses its backslash in ABP's snippet parser and "${next}" becomes a live regex metacharacter — use "\\\\${next}" for a literal "${next}"`,
-            severity: 'warning',
-            startCol: abs,
-            endCol: abs + 2,
-          });
+      const offsets: Array<{ start: number; end: number }> = [];
+      if (decodeSnippetArgument(raw, offsets) !== value) continue;
+      if (arg.regex === 'unflagged' && !value.endsWith('/')) continue;
+      let patternOffset = 0;
+      for (const pattern of regexPatterns(value, arg)) {
+        const start = value.indexOf(pattern, patternOffset);
+        patternOffset = start + pattern.length;
+        if (!regexParts(pattern)) continue;
+        for (let i = start; i < start + pattern.length; i++) {
+          const span = offsets[i];
+          if (span.end - span.start !== 2 || raw[span.start] !== '\\') continue;
+          const next = raw[span.start + 1];
+          const isClass = LOST_ESCAPE_CLASS_CHARS.has(next);
+          const brace = next === '{' || next === '}';
+          const isMeta = LOST_ESCAPE_METACHARS.has(next) &&
+            (!brace || isQuantifierBrace(pattern, i - start));
+          if (isClass || isMeta) {
+            const abs = bodyOffset + off.start + span.start;
+            results.push({
+              message: isClass
+                ? `Escaped "\\${next}" loses its backslash in ABP's snippet parser and becomes a literal "${next}" (regex class/boundary lost) — use "\\\\${next}" if that's intended`
+                : `Escaped "\\${next}" loses its backslash in ABP's snippet parser and "${next}" becomes a live regex metacharacter — use "\\\\${next}" for a literal "${next}"`,
+              severity: 'warning',
+              startCol: abs,
+              endCol: abs + 2,
+            });
+          }
         }
-        i++; // consume the pair, mirroring ABP's own parser loop
       }
     }
   }
@@ -553,12 +674,15 @@ export function detectLostRegexEscapes(body: string, calls: SnippetCall[], bodyO
 
 /** Warn on identical calls (same name + args) repeated within one chain; race start/stop is structural */
 export function detectDuplicateCalls(calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  if (calls.some(hasDecodingFailure)) return [];
   const results: LintResult[] = [];
   const seen = new Set<string>();
 
   for (const call of calls) {
     if (call.name === 'race') continue;
-    const key = call.name + '\x00' + call.args.join('\x00');
+    const args = call.runtimeArgs ?? call.args;
+    if (args.some(arg => arg === null)) continue;
+    const key = JSON.stringify([call.name, args]);
     if (seen.has(key)) {
       const abs = bodyOffset + call.nameOffset;
       results.push({
@@ -631,6 +755,7 @@ export function detectMalformedSnippetSeparator(raw: string): LintResult | null 
 
 /** Validate race block structure across a full snippet chain */
 export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  if (calls.some(hasDecodingFailure)) return [];
   const results: LintResult[] = [];
 
   let raceDepth = 0;
@@ -641,10 +766,11 @@ export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): 
   for (const call of calls) {
     if (call.name !== 'race') continue;
     hasAnyRace = true;
-    if (call.args[0] === 'start') {
+    const args = call.runtimeArgs ?? call.args;
+    if (args[0] === 'start') {
       raceDepth++;
       if (raceDepth === 1) raceStartCall = call;
-    } else if (call.args[0] === 'stop') {
+    } else if (args[0] === 'stop') {
       if (raceDepth === 0) {
         const abs = bodyOffset + call.nameOffset;
         results.push({
@@ -674,8 +800,9 @@ export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): 
     let inRace = false;
     for (const call of calls) {
       if (call.name === 'race') {
-        if (call.args[0] === 'start') inRace = true;
-        else if (call.args[0] === 'stop') inRace = false;
+        const args = call.runtimeArgs ?? call.args;
+        if (args[0] === 'start') inRace = true;
+        else if (args[0] === 'stop') inRace = false;
         continue;
       }
       if (!inRace) continue;

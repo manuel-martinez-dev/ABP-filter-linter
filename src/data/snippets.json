@@ -9,7 +9,8 @@
         },
         {
           "name": "search",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -73,7 +74,8 @@
         },
         {
           "name": "needle",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "returnValue",
@@ -85,7 +87,8 @@
         },
         {
           "name": "stack",
-          "required": false
+          "required": false,
+          "regex": "comma-separated"
         }
       ]
     },
@@ -94,7 +97,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -102,7 +106,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -111,7 +116,8 @@
       "args": [
         {
           "name": "cookie",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "autoRemoveCookie",
@@ -137,19 +143,35 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "property",
-          "required": false
+          "required": false,
+          "when": {
+            "arg": 1,
+            "equals": "rewrite",
+            "required": true
+          }
         },
         {
           "name": "pattern",
-          "required": false
+          "required": false,
+          "regex": true,
+          "when": {
+            "arg": 1,
+            "equals": "rewrite",
+            "required": true
+          }
         },
         {
           "name": "replacement",
-          "required": false
+          "required": false,
+          "when": {
+            "arg": 1,
+            "equals": "rewrite"
+          }
         }
       ]
     },
@@ -167,7 +189,8 @@
         {
           "name": "exceptions",
           "required": false,
-          "variadic": true
+          "variadic": true,
+          "regex": "unflagged"
         }
       ]
     },
@@ -200,7 +223,8 @@
         },
         {
           "name": "filter",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -217,7 +241,8 @@
         },
         {
           "name": "rawNeedleStack",
-          "required": false
+          "required": false,
+          "regex": "space-separated"
         }
       ]
     },
@@ -235,7 +260,8 @@
         },
         {
           "name": "needle",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "returnValue",
@@ -247,7 +273,8 @@
         },
         {
           "name": "stack",
-          "required": false
+          "required": false,
+          "regex": "comma-separated"
         }
       ]
     },
@@ -273,11 +300,13 @@
       "args": [
         {
           "name": "type",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "handler",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "selector",
@@ -300,7 +329,8 @@
         },
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         }
       ]
     },
@@ -309,7 +339,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -317,7 +348,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -330,7 +362,8 @@
         },
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -346,7 +379,8 @@
         },
         {
           "name": "stack",
-          "required": false
+          "required": false,
+          "regex": "comma-separated"
         }
       ]
     },
@@ -355,7 +389,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -363,7 +398,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -405,7 +441,8 @@
         },
         {
           "name": "urlPattern",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -416,7 +453,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -447,7 +485,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -465,7 +504,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -477,11 +517,13 @@
         },
         {
           "name": "style",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "searchStyle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "waitUntil",
@@ -503,7 +545,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -548,7 +591,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -584,11 +628,13 @@
         },
         {
           "name": "style",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "searchStyle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "waitUntil",
@@ -610,7 +656,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -636,7 +683,8 @@
         },
         {
           "name": "searchRegex",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "waitUntil",
@@ -682,7 +730,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -696,7 +745,8 @@
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "selector",
@@ -719,7 +769,8 @@
       "args": [
         {
           "name": "pattern",
-          "required": false
+          "required": false,
+          "regex": true
         }
       ]
     },
@@ -769,7 +820,7 @@
       ]
     },
     "log-if-computed-style-matches": {
-      "since": "2.7.0",
+      "since": "4.27.0",
       "args": [
         {
           "name": "type",
@@ -787,7 +838,7 @@
       ]
     },
     "log-if-iframe-loads": {
-      "since": "2.7.0",
+      "since": "4.27.0",
       "args": [
         {
           "name": "urlPattern",
@@ -804,7 +855,7 @@
       ]
     },
     "log-if-script-loads": {
-      "since": "2.7.0",
+      "since": "4.27.0",
       "args": [
         {
           "name": "urlPattern",
@@ -821,7 +872,7 @@
       ]
     },
     "log-if-selector-exists": {
-      "since": "2.7.0",
+      "since": "4.27.0",
       "args": [
         {
           "name": "selector",
@@ -838,11 +889,12 @@
       ]
     },
     "replace-xhr-request": {
-      "since": "2.7.0",
+      "since": "4.36.2",
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -850,7 +902,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "mode",
@@ -863,7 +916,7 @@
       ]
     },
     "timer-override": {
-      "since": "2.7.0",
+      "since": "4.36.2",
       "args": [
         {
           "name": "timerValue",
@@ -871,7 +924,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "callbackFunc",
@@ -888,12 +942,13 @@
         },
         {
           "name": "stackNeedle",
-          "required": false
+          "required": false,
+          "regex": "space-separated"
         }
       ]
     },
     "log-if-inline-script-contains-fingerprint": {
-      "since": "2.8.0",
+      "since": "4.28.0",
       "args": [
         {
           "name": "textPattern",
@@ -910,7 +965,7 @@
       ]
     },
     "log-if-anchor-href-matches": {
-      "since": "2.9.0",
+      "since": "4.28.0",
       "args": [
         {
           "name": "urlPattern",
@@ -927,11 +982,12 @@
       ]
     },
     "log-if-element-loads": {
-      "since": "2.10.1",
+      "since": "4.29.0",
       "args": [
         {
           "name": "urlPattern",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "type",
@@ -948,7 +1004,7 @@
       ]
     },
     "tmp-yt-buffering-spoof": {
-      "since": "2.11.0",
+      "since": "4.39.0",
       "args": [
         {
           "name": "disabledHooks",
@@ -969,7 +1025,7 @@
       ]
     },
     "tmp-yt-force-reload": {
-      "since": "2.11.0",
+      "since": "4.39.0",
       "args": [
         {
           "name": "mode",
@@ -990,7 +1046,7 @@
       ]
     },
     "replace-argument": {
-      "since": "2.13.0",
+      "since": "4.42.0",
       "args": [
         {
           "name": "methodPath",
@@ -1003,7 +1059,8 @@
         },
         {
           "name": "pattern",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -1011,16 +1068,19 @@
         },
         {
           "name": "stackNeedle",
-          "required": false
+          "required": false,
+          "regex": "comma-separated"
         }
       ]
     },
     "prevent-window-open": {
-      "since": "2.14.0",
+      "since": "4.43.1",
       "args": [
         {
           "name": "pattern",
-          "required": false
+          "required": false,
+          "regex": true,
+          "regexPrefix": "!"
         },
         {
           "name": "delay",
@@ -1038,11 +1098,12 @@
       ]
     },
     "replace-fetch-request": {
-      "since": "2.15.0",
+      "since": "4.43.2",
       "args": [
         {
           "name": "search",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "replacement",
@@ -1050,7 +1111,8 @@
         },
         {
           "name": "needle",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "mode",

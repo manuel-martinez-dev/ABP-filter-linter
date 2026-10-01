@@ -1,5 +1,290 @@
 import { describe, it, expect } from 'vitest';
+import snippetData from '../data/snippets.json';
 import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+
+describe('snippet regex syntax', () => {
+  const run = (body: string, offset = 0) => splitSnippetChain(body)
+    .flatMap(call => validateSnippetCall(call, offset))
+    .filter(result => result.message.includes('Malformed regex'));
+
+  it.each(['/[/', '/(/g', '/x/gg', '/x/z', '/x/uv'])(
+    'warns about literal fallback for %s', pattern => {
+      const results = run(`hide-if-contains '${pattern}' div`);
+      expect(results).toHaveLength(1);
+      expect(results[0].severity).toBe('warning');
+      expect(results[0].message).toContain('literal text');
+    }
+  );
+
+  it.each(['/ad/gim', '/ad/d', '/ad/v', '/path/to/ad/gi', 'Sponsored', '/just-a-path'])(
+    'accepts valid patterns or literal text: %s', pattern => {
+      expect(run(`hide-if-contains '${pattern}' div`)).toEqual([]);
+    }
+  );
+
+  it.each([
+    "hide-if-matches-xpath '/html/body/div['",
+    "skip-video video 0 '/html/body/div['",
+    "hide-if-contains ads '/[/'",
+    "hide-if-has-and-matches-style '/[/'",
+    "replace-fetch-request 'jsonpath($.ads[*)' '/[/'",
+    "log '/[/'",
+    "event-override click trusted '' data '/[/'",
+  ])('does not compile non-regex arguments: %s', body => {
+    expect(run(body)).toEqual([]);
+  });
+
+  it.each([
+    "event-override click rewrite '' data '/[/'",
+    "log-if-element-loads '/[/' type",
+    "debug '/[/'",
+    "hide-if-matches-computed-xpath '//div' '//span' '/[/'",
+    "freeze-element div '' .safe '/ok/' '/[/'",
+    "array-override push ads false '' 'literal,/[/'",
+    "map-override get ads false '' '/ok/,/[/'",
+    "replace-outbound-value foo ads '' '' '' 'literal,/[/'",
+    "replace-argument foo 0 '' '' 'literal,/[/'",
+    "timer-override 10 '' '' both 'literal /[/'",
+    "json-prune ads '' 'literal /[/'",
+  ])('validates conditional, variadic and nested patterns: %s', body => {
+    expect(run(body)).toHaveLength(1);
+  });
+
+  it('keeps flagged freeze-element exceptions on the selector path', () => {
+    expect(run("freeze-element div '' '/[/g'")).toEqual([]);
+  });
+
+  it.each(["'/\\(/u'", '/\\(/u'])(
+    'compiles the argument after ABP removes a single escape: %s', arg => {
+      expect(run(`hide-if-contains ${arg} div`)).toHaveLength(1);
+    }
+  );
+
+  it.each(["'/\\\\(/u'", '/\\\\(/u', "'/\\u0028/u'"])(
+    'handles doubled backslashes and Unicode decoding: %s', arg => {
+      expect(run(`hide-if-contains ${arg} div`)).toHaveLength(arg.includes('u0028') ? 1 : 0);
+    }
+  );
+
+  it('preserves source columns after escaped content in a chain', () => {
+    const body = "log hello; hide-if-contains '/\\(/u' div";
+    const [result] = run(body, 12);
+    expect(body.slice(result.startCol - 12, result.endCol - 12)).toBe('/\\(/u');
+  });
+
+  it('does not guess regex syntax when a broken Unicode escape can consume boundaries', () => {
+    expect(run("hide-if-contains '/\\uZZZZ[/' div")).toEqual([]);
+  });
+
+  it('decodes control-character escapes without adding regex warnings', () => {
+    expect(run("hide-if-contains '/a\\n\\r\\tb/u' div")).toEqual([]);
+  });
+
+  it('uses ABP product versions for the corrected since metadata', () => {
+    expect(snippetData.snippets['replace-argument'].since).toBe('4.42.0');
+    expect(snippetData.snippets['prevent-window-open'].since).toBe('4.43.1');
+    expect(Object.values(snippetData.snippets).some(schema => schema.since.startsWith('2.'))).toBe(false);
+  });
+});
+
+describe('decoded snippet validation and regex boundaries', () => {
+  const run = (body: string) => {
+    const calls = splitSnippetChain(body);
+    return [...calls.flatMap(call => validateSnippetCall(call, 0)),
+      ...validateSnippetChain(calls, 0), ...detectDuplicateCalls(calls, 0),
+      ...detectLostRegexEscapes(body, calls, 0)];
+  };
+
+  it.each([
+    String.raw`replace-argument foo '\uZZZZ'`,
+    String.raw`event-override click '\uZZZZ' '' data /x/`,
+    String.raw`event-override click rewrite '' '\uZZZZ' /x/`,
+    String.raw`race '\uZZZZ'; race stop`,
+    String.raw`race start; hide-if-contains '\uZZZZ' div; race stop`,
+    String.raw`hide-if-contains '\u12' div`,
+  ])('reports decoding failure without dependent diagnostics: %s', body => {
+    const results = run(body);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('Invalid escape');
+    expect(body.slice(results[0].startCol, results[0].endCol)).toMatch(/^\\u/);
+  });
+
+  it.each([
+    ['totally-unknown-snippet', 'Unknown snippet', 'error'],
+    ['log-if-script-loads', 'Deprecated snippet', 'warning'],
+  ])('preserves name and escape diagnostics for %s', (name, message, severity) => {
+    const body = String.raw`${name} '\uZZZZ'`;
+    const results = run(body);
+    expect(results).toHaveLength(2);
+    const escape = results.find(result => result.message.includes('Invalid escape'))!;
+    expect(escape.severity).toBe('error');
+    expect(body.slice(escape.startCol, escape.endCol)).toBe(String.raw`\uZZZZ`);
+    const nameResult = results.find(result => result.message.includes(message))!;
+    expect(nameResult.severity).toBe(severity);
+    expect(body.slice(nameResult.startCol, nameResult.endCol)).toBe(name);
+  });
+
+  it('reports a trailing incomplete escape', () => {
+    const results = run('hide-if-contains foo' + '\\');
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('Invalid escape');
+  });
+
+  it('keeps decoding failures visible when duplicate checks are suppressed', () => {
+    const results = run(String.raw`hide-if-contains '\uZZZZ' div; hide-if-contains '\uZZZZ' div`);
+    expect(results).toHaveLength(2);
+    expect(results.every(result => result.message.includes('Invalid escape'))).toBe(true);
+  });
+
+  it('uses one fallback range calculation for enum and nested-argument warnings', () => {
+    const call = {
+      name: 'array-override', nameOffset: 0,
+      args: [String.raw`\u0070ush`, 'hide-if-contains ads div'],
+      runtimeArgs: ['push', 'hide-if-contains ads div'],
+    };
+    const results = validateSnippetCall(call, 7);
+    expect(results).toHaveLength(1);
+    expect(results[0].startCol).toBe(7 + 'array-override '.length + String.raw`\u0070ush `.length);
+    expect(results[0].endCol - results[0].startCol).toBe(call.args[1].length);
+  });
+
+  it('refreshes regex results if a caller changes its argument values', () => {
+    const call = { name: 'hide-if-contains', nameOffset: 0, args: ['/ads/'] };
+    expect(validateSnippetCall(call, 0)).toEqual([]);
+    call.args[0] = '/[/';
+    expect(validateSnippetCall(call, 0)[0].message).toContain('Malformed regex');
+  });
+
+  it.each(['!', String.raw`\u0021`])('validates inverted patterns with prefix %s', prefix => {
+    const body = `prevent-window-open '${prefix}/[/'`;
+    const results = run(body);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('Malformed regex');
+    expect(body.slice(results[0].startCol, results[0].endCol)).toBe(`${prefix}/[/`);
+  });
+
+  it.each(['!', String.raw`\u0021`])('keeps escape warning positions after prefix %s', prefix => {
+    const body = String.raw`prevent-window-open '${prefix}/foo\.bar/u'`;
+    const results = run(body);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('backslash');
+    expect(body.slice(results[0].startCol, results[0].endCol)).toBe(String.raw`\.`);
+  });
+
+  it.each([
+    "prevent-window-open '!/ads/gi'",
+    "prevent-window-open '!ads'",
+    "prevent-window-open '!'",
+    "prevent-window-open '!!/[/'",
+    "hide-if-contains '!/[/' div",
+    String.raw`prevent-window-open '!/foo\\.bar/u'`,
+  ])('preserves valid or literal prefix forms: %s', body => {
+    expect(run(body)).toEqual([]);
+  });
+
+  it('consolidates inverted-pattern diagnostics after decoding in a chain', () => {
+    const body = String.raw`hide-if-contains ads div; prevent-window-open '\u0021/foo\(/u'`;
+    const results = run(body);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('Malformed regex');
+    expect(body.slice(results[0].startCol, results[0].endCol)).toBe(String.raw`\u0021/foo\(/u`);
+  });
+
+  it.each([
+    String.raw`array-override \u0070ush '/ads/' true`,
+    String.raw`replace-argument foo.bar \u0030 '' ''`,
+    String.raw`event-override click \u0072ewrite '' data /ads/ replacement`,
+    String.raw`race \u0073tart; hide-if-contains ads div; race stop`,
+    String.raw`race start \u0031; hide-if-contains ads div; race stop`,
+  ])('accepts decoded control values: %s', body => {
+    expect(run(body)).toEqual([]);
+  });
+
+  it('detects encoded forbidden demarcators with a source-accurate range', () => {
+    const body = String.raw`hide-if-has-and-matches-style '^^\u0073vg^^' div`;
+    const [result] = run(body);
+    expect(result.message).toContain('"^^svg^^" is not supported');
+    expect(body.slice(result.startCol, result.endCol)).toBe(String.raw`^^\u0073vg^^`);
+  });
+
+  it('detects an encoded nested snippet name', () => {
+    expect(run(String.raw`hide-if-contains '\u0068ide-if-contains ads div' div`)
+      .some(result => result.message.includes('nested'))).toBe(true);
+  });
+
+  it('detects calls that become identical after decoding', () => {
+    expect(run(String.raw`hide-if-contains ads div; hide-if-contains \u0061ds div`)
+      .some(result => result.message.includes('Duplicate snippet call'))).toBe(true);
+  });
+
+  it('preserves argument boundaries when decoded values contain NUL', () => {
+    const body = String.raw`hide-if-contains 'a\u0000b' c; hide-if-contains a 'b\u0000c'`;
+    expect(run(body)).toEqual([]);
+    expect(run(String.raw`hide-if-contains 'a\u0000b' c; hide-if-contains 'a\u0000b' c`)
+      .filter(result => result.message.includes('Duplicate snippet call'))).toHaveLength(1);
+  });
+
+  it.each([
+    String.raw`array-override push ads true '' '/foo\.js/\u002c/bar\.js/'`,
+    String.raw`timer-override 10 '' '' both '/foo\.js/\u0020/bar\.js/'`,
+    String.raw`array-override push ads true '' '/foo\.js/\u002c /foo\.js/'`,
+  ])('maps escape warnings through decoded stack separators: %s', body => {
+    const results = run(body);
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(result.message).toContain('backslash');
+      expect(body.slice(result.startCol, result.endCol)).toBe(String.raw`\.`);
+    }
+    expect(results[0].startCol).toBeLessThan(results[1].startCol);
+  });
+
+  it('does not reinterpret a doubled escape as an encoded separator', () => {
+    const body = String.raw`array-override push ads true '' '/foo\.js/\\u002c/bar\.js/'`;
+    expect(run(body)).toHaveLength(2);
+  });
+
+  it('checks regexes after decoding the rewrite mode', () => {
+    const results = run(String.raw`event-override click \u0072ewrite '' data '/[/'`);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('Malformed regex');
+  });
+
+  it.each([
+    String.raw`hide-if-matches-xpath '/html/body/a[contains(.,"foo\.bar")]/div'`,
+    String.raw`log '/foo\.bar/div'`,
+    String.raw`unknown-snippet '/foo\.bar/u'`,
+    String.raw`freeze-element div '' '/foo\.bar/g'`,
+    String.raw`event-override click trusted '' data '/foo\.bar/u'`,
+  ])('does not apply regex escape checks to non-regex values: %s', body => {
+    const calls = splitSnippetChain(body);
+    expect(detectLostRegexEscapes(body, calls, 0)).toEqual([]);
+  });
+
+  it('warns about braces that become a quantifier after decoding', () => {
+    const results = run(String.raw`hide-if-contains '/foo\{2\}/u' div`);
+    expect(results).toHaveLength(2);
+    expect(results.every(result => result.message.includes('backslash'))).toBe(true);
+    expect(run("hide-if-contains '/foo{2}/u' div")).toEqual([]);
+    expect(run(String.raw`hide-if-contains '/foo\\{2\\}/u' div`)).toEqual([]);
+    expect(run(String.raw`hide-if-contains '/foo\{bar\}/' div`)).toEqual([]);
+    expect(run(String.raw`hide-if-contains '/[\{2\}]/u' div`)).toEqual([]);
+  });
+
+  it('emits one diagnostic when losing an escape makes the regex invalid', () => {
+    const results = run(String.raw`hide-if-contains '/foo\(/u' div`);
+    expect(results).toHaveLength(1);
+    expect(results[0].message).toContain('Malformed regex');
+  });
+
+  it('checks separate stack patterns without merging commas inside patterns', () => {
+    expect(run(String.raw`array-override push '/ads/' true '' '/foo[bar{2,4}/'`)).toEqual([]);
+    const body = String.raw`array-override push '/ads/' true '' '/foo\.js/,/bar\.js/'`;
+    const results = run(body);
+    expect(results).toHaveLength(2);
+    for (const result of results) expect(body.slice(result.startCol, result.endCol)).toBe(String.raw`\.`);
+  });
+});
 
 describe('conditional-hiding selector defaults', () => {
   const cases = [
@@ -388,15 +673,15 @@ describe('detectMissingSnippetSeparator', () => {
 
 describe('detectMalformedSnippetSeparator', () => {
   it('detects "$#" (missing leading #)', () => {
-    const result = detectMalformedSnippetSeparator('example.com$#some-snippet arg1 arg2');
+    const result = detectMalformedSnippetSeparator('example.com$#hide-if-contains arg1 arg2');
     expect(result).not.toBeNull();
-    expect(result!.message).toContain('example.com#$#some-snippet arg1 arg2');
+    expect(result!.message).toContain('example.com#$#hide-if-contains arg1 arg2');
   });
 
   it('detects "#$" (missing trailing #)', () => {
-    const result = detectMalformedSnippetSeparator('example.com#$some-snippet arg1 arg2');
+    const result = detectMalformedSnippetSeparator('example.com#$hide-if-contains arg1 arg2');
     expect(result).not.toBeNull();
-    expect(result!.message).toContain('example.com#$#some-snippet arg1 arg2');
+    expect(result!.message).toContain('example.com#$#hide-if-contains arg1 arg2');
   });
 
   it('fires on shape even when the snippet name is unknown', () => {
@@ -416,7 +701,7 @@ describe('detectMalformedSnippetSeparator', () => {
   });
 
   it('does not flag a correct #$# separator', () => {
-    expect(detectMalformedSnippetSeparator('example.com#$#some-snippet arg')).toBeNull();
+    expect(detectMalformedSnippetSeparator('example.com#$#hide-if-contains arg')).toBeNull();
   });
 
   it('does not flag a cosmetic rule (no $ in the run)', () => {
@@ -783,52 +1068,79 @@ describe('log-if-* deprecations (@eyeo/snippets v2.10.0)', () => {
 describe('detectLostRegexEscapes', () => {
   const run = (body: string) => detectLostRegexEscapes(body, splitSnippetChain(body), 0);
 
+  it.each(['g', 'm', 's', 'u', 'y', 'd', 'gi', 'gimsuy', 'v'])(
+    'detects lost escapes with v2.16.0 regex flags %s', flags => {
+      for (const arg of [`/foo\\.bar/${flags}`, `'/foo\\.bar/${flags}'`]) {
+        const body = `hide-if-contains ${arg} div`;
+        const results = run(body);
+        expect(results).toHaveLength(1);
+        expect(body.slice(results[0].startCol, results[0].endCol)).toBe('\\.');
+      }
+    }
+  );
+
+  it('uses the last slash to locate flags', () => {
+    expect(run("hide-if-contains '/path/to/foo\\.js/gi' div")).toHaveLength(1);
+  });
+
+  it.each(['z', 'gg', 'uv'])('ignores literal fallback with invalid flags %s', flags => {
+    expect(run(`hide-if-contains '/foo\\.bar/${flags}' div`)).toHaveLength(0);
+  });
+
+  it('does not flag doubled escapes with combined flags', () => {
+    expect(run("hide-if-contains '/foo\\\\.bar/gim' div")).toHaveLength(0);
+  });
+
+  it('leaves invalid decoded patterns to the malformed-regex diagnostic', () => {
+    expect(run("hide-if-contains '/foo\\(/u' div")).toHaveLength(0);
+  });
+
   it('flags \\s and \\S inside a character class', () => {
-    const results = run('some-snippet /[\\s\\S]*/');
+    const results = run('hide-if-contains /[\\s\\S]*/');
     expect(results).toHaveLength(2);
     expect(results.every(r => r.severity === 'warning')).toBe(true);
   });
 
   it('flags each \\. at its own column', () => {
-    const results = run('some-snippet /foo\\.bar\\.js/');
+    const results = run('hide-if-contains /foo\\.bar\\.js/');
     expect(results).toHaveLength(2);
-    expect(results[0].startCol).toBe(17);
-    expect(results[1].startCol).toBe(22);
+    expect(results[0].startCol).toBe(21);
+    expect(results[1].startCol).toBe(26);
   });
 
   it('flags \\. but not \\/ in the same arg', () => {
-    const results = run('some-snippet /\\/pop\\.js/');
+    const results = run('hide-if-contains /\\/pop\\.js/');
     expect(results).toHaveLength(1);
     expect(results[0].message).toContain('.');
   });
 
   it('finds the offset inside the second call of a chain', () => {
-    const results = run('log a; some-snippet /x\\.y/ sel');
+    const results = run('log a; hide-if-contains /x\\.y/ sel');
     expect(results).toHaveLength(1);
-    const body = 'log a; some-snippet /x\\.y/ sel';
+    const body = 'log a; hide-if-contains /x\\.y/ sel';
     expect(body.slice(results[0].startCol, results[0].endCol)).toBe('\\.');
   });
 
   it('does not flag an already-doubled backslash', () => {
-    expect(run('some-snippet /loader\\\\.min\\\\.js/')).toHaveLength(0);
-    expect(run('some-snippet /[\\\\s\\\\S]*/')).toHaveLength(0);
+    expect(run('hide-if-contains /loader\\\\.min\\\\.js/')).toHaveLength(0);
+    expect(run('hide-if-contains /[\\\\s\\\\S]*/')).toHaveLength(0);
   });
 
   it('does not flag recognized escapes', () => {
-    expect(run('some-snippet /\\n\\r\\t\\\\/')).toHaveLength(0);
+    expect(run('hide-if-contains /\\n\\r\\t\\\\/')).toHaveLength(0);
   });
 
   it('flags a regex-looking arg inside quotes too — quoting does not protect escapes', () => {
-    const results = run("some-snippet '/foo\\.bar/'");
+    const results = run("hide-if-contains '/foo\\.bar/'");
     expect(results).toHaveLength(1);
   });
 
   it('does not flag a quoted arg that merely starts with "/" but is not regex-shaped', () => {
-    expect(run("some-snippet '/foo\\.bar'")).toHaveLength(0);
+    expect(run("hide-if-contains '/foo\\.bar'")).toHaveLength(0);
   });
 
   it('does not crash on a trailing lone backslash', () => {
-    expect(() => run('some-snippet /foo\\')).not.toThrow();
+    expect(() => run('hide-if-contains /foo\\')).not.toThrow();
   });
 });
 

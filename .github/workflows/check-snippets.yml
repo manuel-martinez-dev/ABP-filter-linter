@@ -50,6 +50,7 @@ jobs:
             ```
 
             **Action required:** Review the auto-detected argument definitions in `src/data/snippets.json`. For each snippet:
+            - Verify the Adblock Plus `since` version; replace `unknown` using upstream documentation or release history
             - Verify `required` flags and fix any that are incorrect
             - Add any missing `enum` values (run `node .github/scripts/inspect-snippet.mjs <snippet-name>` locally to inspect the source)
             - Add special fields if needed (`category`, `noRace`, `max`, etc.)
@@ -60,7 +61,13 @@ jobs:
           labels: 'snippets,maintenance'
 
       - name: Fail if snippet schema drift was detected
-        if: (steps.check.outputs.exit_code != '0' && steps.check.outputs.exit_code != '2') || contains(steps.check.outputs.output, 'DRIFT_DETECTED')
+        if: steps.check.outputs.exit_code == '3' || (steps.check.outputs.exit_code == '2' && contains(steps.check.outputs.output, 'DRIFT_DETECTED'))
         run: |
           echo "::error::Existing snippet schemas have drifted from upstream — see the DRIFT_DETECTED block above."
+          exit 1
+
+      - name: Fail if snippet comparison could not complete
+        if: steps.check.outputs.exit_code != '0' && steps.check.outputs.exit_code != '2' && steps.check.outputs.exit_code != '3'
+        run: |
+          echo "::error::Snippet comparison failed — compatibility is unknown. See the script error above; this is not a schema-drift result."
           exit 1

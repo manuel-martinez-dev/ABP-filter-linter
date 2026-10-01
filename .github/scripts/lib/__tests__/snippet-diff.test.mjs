@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import ts from 'typescript';
 import {
   parseUpstreamGraph, buildNameMap, parseSnippetArgs, compareArgs, formatDriftReport,
   toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
@@ -286,6 +287,74 @@ describe('toRuntimeArgs', () => {
       { name: 'b', required: false },
       { name: 'c', required: false, variadic: true, enum: ['x'] },
     ]);
+  });
+});
+
+describe('regex schema drift', () => {
+  it('analyzes multiple snippet bindings from one bundle and refreshes changed source', () => {
+    const names = new Map([['foo', 'foo'], ['bar', 'bar']]);
+    const source = 'function foo(pattern) { return toRegExp(pattern); } function bar(pattern) { const f = (pattern) => toRegExp(pattern); }';
+    expect(parseSnippetArgs('foo', source, names)[0].regex).toBe(true);
+    expect(parseSnippetArgs('bar', source, names)[0].regex).toBeUndefined();
+    const updated = source.replace('const f = (pattern) => toRegExp(pattern);', 'return toRegExp(pattern);');
+    expect(parseSnippetArgs('bar', updated, names)[0].regex).toBe(true);
+  });
+  it('resolves bindings entirely in memory without accessing the TypeScript filesystem', () => {
+    const methods = ['readFile', 'writeFile', 'fileExists', 'directoryExists', 'getDirectories',
+      'readDirectory', 'realpath', 'getCurrentDirectory', 'getExecutingFilePath'];
+    const spies = methods.map(method => vi.spyOn(ts.sys, method).mockImplementation(() => {
+      throw new Error(`Unexpected filesystem access: ${method}`);
+    }));
+    try {
+      const source = 'function foo(pattern, other) { { const pattern = "local"; toRegExp(pattern); } return toRegExp(other); }';
+      const args = parseSnippetArgs('foo', source, new Map([['foo', 'foo']]));
+      expect(args[0].regex).toBeUndefined();
+      expect(args[1].regex).toBe(true);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+  const parse = body => parseSnippetArgs('foo', `function foo(pattern, other) { ${body} }`, new Map([['foo', 'foo']]));
+
+  it('detects a conversion moved to a previously literal argument', () => {
+    const args = parse('return toGlobalRegExp(other, logger);');
+    const result = compareArgs([{ name: 'pattern', regex: true }, { name: 'other' }], args);
+    expect(result.regexDiffs).toEqual([{ arg: 'other', upstreamParam: 'other' }]);
+    expect(formatDriftReport([{ name: 'foo', recorded: ['pattern', 'other'], upstream: ['pattern', 'other'], enumDiffs: [], regexDiffs: result.regexDiffs }], []))
+      .toContain('regex drift on "other"');
+  });
+
+  it('recognizes renamed bundle helpers and preserves existing regex modes', () => {
+    const args = parse('return toRegExp$2(pattern);');
+    expect(args[0].regex).toBe(true);
+    expect(compareArgs([{ name: 'pattern', regex: 'unflagged' }], args).regexDiffs).toEqual([]);
+  });
+
+  it('does not treat comments, strings, or shadowing function parameters as conversions', () => {
+    const args = parse('/* toRegExp(pattern) */ const text = "toRegExp(other)"; function nested(pattern) { return toRegExp(pattern); }');
+    expect(args.every(arg => arg.regex === undefined)).toBe(true);
+  });
+
+  it('does not infer removal when conversion happens through a helper', () => {
+    expect(compareArgs([{ name: 'pattern', regex: true }], parse('return helper(pattern);')).regexDiffs).toEqual([]);
+  });
+
+  it.each([
+    '{ const pattern = "internal"; toRegExp(pattern); }',
+    'try {} catch (pattern) { toRegExp(pattern); }',
+    'const f = ({pattern}) => toRegExp(pattern);',
+    'const f = ([pattern]) => toRegExp(pattern);',
+    'function f() { toRegExp(pattern); var pattern; }',
+    'for (const pattern of []) { toRegExp(pattern); }',
+    'function toRegExp(value) { return value; } toRegExp(pattern);',
+  ])('resolves local bindings instead of confusing them with parameters: %s', body => {
+    expect(parse(body).every(arg => arg.regex === undefined)).toBe(true);
+  });
+
+  it('recognizes a captured parameter despite a shadow in a different block', () => {
+    const args = parse('{ const pattern = "local"; toRegExp(pattern); } const f = () => toRegExp(pattern);');
+    expect(args[0].regex).toBe(true);
   });
 });
 
