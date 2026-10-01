@@ -1,13 +1,8 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, snippetChainRequiresDomain } from './validators/snippets';
-import { isRestrictedByDomain } from './validators/utils';
-import { validateNetworkRule } from './validators/network';
-import { checkEmptyBody, checkGenericBodyLength, validateCosmeticSelector } from './validators/cosmetic';
-import { validateExtendedSelector } from './validators/extended';
+import { lintLine } from './validators/lint-line';
 import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey, validateContentDomainEntries } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
-import type { LintResult } from './types';
 
 const COLLECTION_NAME = 'abp-filter-linter';
 
@@ -64,8 +59,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     for (let i = 0; i < lines.length; i++) {
       const parsed = parseLine(lines[i], i);
-      const results: LintResult[] = [];
-
       if (parsed.type === 'comment' || parsed.type === 'unknown') continue;
 
       const doubleComma = detectDoubleComma(lines[i]);
@@ -84,74 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
       const trailingWs = detectTrailingWhitespace(lines[i]);
       if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
 
-      // generic #@# exceptions are valid ABP syntax — only #?# requires a restricting domain
-      if (parsed.type === 'extended' && parsed.body.trim() && !isRestrictedByDomain(parsed.domains)) {
-        const sep = parsed.separator;
-        const range = new vscode.Range(i, 0, i, lines[i].length);
-        const diag = new vscode.Diagnostic(
-          range,
-          `"${sep}" filter must have a non-negated domain with a dot (e.g. example.com${sep}...)`,
-          vscode.DiagnosticSeverity.Error
-        );
-        diag.source = 'abp-filter-linter';
-        diagnostics.push(diag);
-      }
-
-      if (parsed.type === 'snippet') {
-        const calls = splitSnippetChain(parsed.body);
-
-        if (!isRestrictedByDomain(parsed.domains) && snippetChainRequiresDomain(calls)) {
-          const sep = parsed.separator;
-          const range = new vscode.Range(i, 0, i, lines[i].length);
-          const diag = new vscode.Diagnostic(
-            range,
-            `"${sep}" filter must have a non-negated domain with a dot (e.g. example.com${sep}...)`,
-            vscode.DiagnosticSeverity.Error
-          );
-          diag.source = 'abp-filter-linter';
-          diagnostics.push(diag);
-        }
-
-        results.push(...validateSnippetBody(parsed.body, parsed.bodyOffset));
-        results.push(...validateSnippetChain(calls, parsed.bodyOffset));
-        results.push(...detectDuplicateCalls(calls, parsed.bodyOffset));
-        results.push(...detectUnquotedRegexBreaks(parsed.body, calls, parsed.bodyOffset));
-        results.push(...detectLostRegexEscapes(parsed.body, calls, parsed.bodyOffset));
-        for (const call of calls) {
-          results.push(...validateSnippetCall(call, parsed.bodyOffset));
-        }
-      }
-
-      if (parsed.type === 'network' || parsed.type === 'exception') {
-        results.push(
-          ...validateNetworkRule(parsed.body, parsed.type === 'exception', parsed.bodyOffset)
-        );
-        if (parsed.type === 'network') {
-          const missingSep = detectMissingSnippetSeparator(parsed.raw);
-          if (missingSep) results.push(missingSep);
-          const malformedSep = detectMalformedSnippetSeparator(parsed.raw);
-          if (malformedSep) results.push(malformedSep);
-        }
-      }
-
-      if (parsed.type === 'cosmetic' || parsed.type === 'hiding-exception') {
-        const emptyBody = checkEmptyBody(parsed.body, parsed.separator, parsed.bodyOffset);
-        if (emptyBody) {
-          results.push(emptyBody);
-        } else {
-          const tooGeneric = checkGenericBodyLength(parsed.domains, parsed.body, parsed.bodyOffset);
-          if (tooGeneric) results.push(tooGeneric);
-        }
-        results.push(...validateCosmeticSelector(parsed.body, parsed.bodyOffset));
-      }
-
-      if (parsed.type === 'extended') {
-        const emptyBody = checkEmptyBody(parsed.body, parsed.separator, parsed.bodyOffset);
-        if (emptyBody) results.push(emptyBody);
-        results.push(...validateExtendedSelector(parsed.body, parsed.bodyOffset));
-      }
-
-      for (const r of results) {
+      for (const r of lintLine(parsed)) {
         diagnostics.push(toDiagnostic(r, i, doc));
       }
 

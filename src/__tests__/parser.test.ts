@@ -99,3 +99,33 @@ describe('isAbpDocument', () => {
     expect(isAbpDocument(['@@||example.com^$document'])).toBe(true);
   });
 });
+
+describe('parseLine — snippet exceptions (#@$#)', () => {
+  it('parses a domain-scoped exception', () => {
+    expect(parseLine('example.com#@$#log hi', 0)).toMatchObject({
+      type: 'snippet-exception', domains: ['example.com'], body: 'log hi', separator: '#@$#', bodyOffset: 15,
+    });
+  });
+
+  it('parses a domain-less exception', () => {
+    expect(parseLine('#@$#log hi', 0)).toMatchObject({ type: 'snippet-exception', domains: [], bodyOffset: 4 });
+  });
+
+  it('keeps negated and multiple domains', () => {
+    expect(parseLine('a.com,b.com,~c.com#@$#log test', 0).domains).toEqual(['a.com', 'b.com', '~c.com']);
+  });
+
+  it('lets the earliest separator win', () => {
+    expect(parseLine('foo.com#@$##ad', 0)).toMatchObject({ type: 'snippet-exception', body: '#ad' });
+    expect(parseLine('foo.com##div[x="#@$#y"]', 0).type).toBe('cosmetic');
+  });
+
+  it('leaves #@# and network lines alone', () => {
+    expect(parseLine('foo.com#@#.ad', 0).type).toBe('hiding-exception');
+    expect(parseLine('||example.com/path#@$#x', 0).type).toBe('network');
+  });
+
+  it('parses an empty body', () => {
+    expect(parseLine('example.com#@$#', 0)).toMatchObject({ type: 'snippet-exception', body: '' });
+  });
+});

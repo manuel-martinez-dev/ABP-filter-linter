@@ -1,3 +1,4 @@
+import { RegExpParser, visitRegExpAST } from '@eslint-community/regexpp';
 import snippetData from '../data/snippets.json';
 import modifierData from '../data/modifiers.json';
 import type { LintResult } from '../types';
@@ -22,6 +23,7 @@ interface SnippetSchema {
   args: ArgSchema[];
   category?: string;
   noRace?: boolean;
+  race?: boolean;
 }
 
 const SNIPPETS = snippetData.snippets as Record<string, SnippetSchema>;
@@ -164,6 +166,17 @@ export interface SnippetCall {
   argOffsets?: Array<{ start: number; end: number }>;
   /** char offset of the snippet name within the body */
   nameOffset: number;
+  ambiguous?: boolean;
+}
+
+function unquotedRegexBreak(raw: string): ';' | ' ' | null {
+  let bare: ';' | ' ' | null = null;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '\\') { i++; continue; }
+    if (raw[i] === ';') return ';';
+    if (raw[i] === ' ' || raw[i] === '\t') bare = ' ';
+  }
+  return bare;
 }
 
 const isBoundary = (ch: string | undefined) =>
@@ -237,7 +250,9 @@ export function splitSnippetChain(body: string): SnippetCall[] {
     const argOffsets = detailed.map(a => ({ start: argBodyBase + a.start, end: argBodyBase + a.end }));
 
     const runtimeArgs = detailed.map(a => decodeSnippetArgument(argBody.slice(a.start, a.end)));
-    calls.push({ name, args, runtimeArgs, argOffsets, nameOffset });
+    const ambiguous = detailed.some(a =>
+      argBody[a.start] === '/' && argBody[a.start - 1] !== "'" && unquotedRegexBreak(argBody.slice(a.start, a.end)) !== null);
+    calls.push({ name, args, runtimeArgs, argOffsets, nameOffset, ambiguous });
     offset += part.length + 1;
   }
 
@@ -538,6 +553,24 @@ export function validateSnippetCall(
   return results;
 }
 
+export function detectDoubleQuotedArgs(body: string, calls: SnippetCall[], bodyOffset: number): LintResult[] {
+  const results: LintResult[] = [];
+  for (const call of calls) {
+    for (const [index, off] of (call.argOffsets ?? []).entries()) {
+      if (body[off.start - 1] === "'" || regexParts(call.args[index])) continue;
+      const raw = body.slice(off.start, off.end);
+      if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) continue;
+      results.push({
+        message: 'Double quotes around an argument are literal characters, possibly unintended — use single quotes to quote it',
+        severity: 'warning',
+        startCol: bodyOffset + off.start,
+        endCol: bodyOffset + off.end,
+      });
+    }
+  }
+  return results;
+}
+
 /** Check quote sanity in a snippet chain body: unclosed quotes and quotes opening/closing mid-token */
 export function validateSnippetBody(body: string, bodyOffset: number): LintResult[] {
   const results: LintResult[] = [];
@@ -580,13 +613,7 @@ export function detectUnquotedRegexBreaks(body: string, calls: SnippetCall[], bo
     if (!call.argOffsets) continue;
     for (const off of call.argOffsets) {
       if (body[off.start] !== '/' || body[off.start - 1] === "'") continue;
-      const raw = body.slice(off.start, off.end);
-      let bare: ';' | ' ' | null = null;
-      for (let i = 0; i < raw.length; i++) {
-        if (raw[i] === '\\') { i++; continue; }
-        if (raw[i] === ';') { bare = ';'; break; } // command split — worse than an arg split
-        if (raw[i] === ' ' || raw[i] === '\t') bare = ' ';
-      }
+      const bare = unquotedRegexBreak(body.slice(off.start, off.end));
       if (bare === null) continue;
       results.push({
         message: bare === ';'
@@ -604,6 +631,24 @@ export function detectUnquotedRegexBreaks(body: string, calls: SnippetCall[], bo
 // adblockpluscore's singleCharacterEscapes only maps n/r/t; any other \X drops the backslash
 const LOST_ESCAPE_CLASS_CHARS = new Set(['s', 'S', 'd', 'D', 'w', 'W', 'b', 'B']);
 const LOST_ESCAPE_METACHARS = new Set(['.', '^', '$', '*', '+', '?', '(', ')', '[', ']', '|', '{', '}']);
+
+function isRangeHyphen(pattern: string, index: number): boolean {
+  const parts = regexParts(pattern);
+  if (!parts) return false;
+  try {
+    const ast = new RegExpParser({ ecmaVersion: 2025 }).parsePattern(parts.source, 0, parts.source.length, {
+      unicode: parts.flags.includes('u'),
+      unicodeSets: parts.flags.includes('v'),
+    });
+    let found = false;
+    visitRegExpAST(ast, {
+      onCharacterClassRangeEnter(node) { if (node.min.end === index - 1) found = true; },
+    });
+    return found;
+  } catch {
+    return false;
+  }
+}
 
 function isQuantifierBrace(pattern: string, index: number): boolean {
   const parts = regexParts(pattern);
@@ -653,10 +698,13 @@ export function detectLostRegexEscapes(body: string, calls: SnippetCall[], bodyO
           const brace = next === '{' || next === '}';
           const isMeta = LOST_ESCAPE_METACHARS.has(next) &&
             (!brace || isQuantifierBrace(pattern, i - start));
-          if (isClass || isMeta) {
+          const isHyphen = next === '-' && isRangeHyphen(pattern, i - start);
+          if (isClass || isMeta || isHyphen) {
             const abs = bodyOffset + off.start + span.start;
             results.push({
-              message: isClass
+              message: isHyphen
+                ? `Escaped "\\-" loses its backslash in ABP's snippet parser and becomes a range operator in the character class — use "\\\\-" for a literal hyphen`
+                : isClass
                 ? `Escaped "\\${next}" loses its backslash in ABP's snippet parser and becomes a literal "${next}" (regex class/boundary lost) — use "\\\\${next}" if that's intended`
                 : `Escaped "\\${next}" loses its backslash in ABP's snippet parser and "${next}" becomes a live regex metacharacter — use "\\\\${next}" for a literal "${next}"`,
               severity: 'warning',
@@ -679,7 +727,7 @@ export function detectDuplicateCalls(calls: SnippetCall[], bodyOffset: number): 
   const seen = new Set<string>();
 
   for (const call of calls) {
-    if (call.name === 'race') continue;
+    if (call.name === 'race' || call.ambiguous) continue;
     const args = call.runtimeArgs ?? call.args;
     if (args.some(arg => arg === null)) continue;
     const key = JSON.stringify([call.name, args]);
@@ -812,6 +860,7 @@ export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): 
 
       const supported =
         (schema.category === 'conditional-hiding' && !schema.noRace) ||
+        schema.race ||
         call.name === 'skip-video' ||
         schema.category === 'debugging';
 

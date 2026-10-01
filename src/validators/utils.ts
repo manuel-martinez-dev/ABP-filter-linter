@@ -8,6 +8,11 @@ export function isRestrictedByDomain(domains: string[]): boolean {
     (/^.[^.]*\../.test(d) || d === 'localhost'));
 }
 
+export function domainScope(domains: string[]): 'global' | 'exclusion-only' | 'scoped' {
+  if (domains.length === 0) return 'global';
+  return domains.every(d => d.startsWith('~')) ? 'exclusion-only' : 'scoped';
+}
+
 export function findActionBlock(
   selector: string
 ): { selectorPart: string; actionContent: string | null; blockStart: number } {

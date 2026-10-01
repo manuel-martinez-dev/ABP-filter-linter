@@ -4,7 +4,7 @@ import { findOptionsSeparator, isRegexFilter, hasMalformedWildcard } from './net
 
 export function detectSpacesInDomains(line: string): LintResult | null {
   // Cosmetic/snippet/extended/hiding-exception: check domain part before separator
-  const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
+  const sepMatch = line.match(/#(@\$|[@?$])?#/);
   if (sepMatch && sepMatch.index !== undefined && !/[/|@"!]/.test(line.slice(0, sepMatch.index))) {
     const domainPart = line.slice(0, sepMatch.index);
     if (!domainPart) return null;
@@ -41,7 +41,7 @@ export function detectSpacesInDomains(line: string): LintResult | null {
 
 export function detectDoubleComma(line: string): LintResult | null {
   // For cosmetic/snippet rules: only check domain part (before the separator)
-  const cosmeticMatch = line.match(/#(\$#|#|\?#|@#)/);
+  const cosmeticMatch = line.match(/#(@\$|[@?$])?#/);
   if (cosmeticMatch && cosmeticMatch.index !== undefined && !/[/|@"!]/.test(line.slice(0, cosmeticMatch.index))) {
     const domainPart = line.slice(0, cosmeticMatch.index);
     const col = domainPart.indexOf(',,');
@@ -66,7 +66,7 @@ export function detectDoubleComma(line: string): LintResult | null {
 }
 
 export function validateContentDomainEntries(line: string): LintResult[] {
-  const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
+  const sepMatch = line.match(/#(@\$|[@?$])?#/);
   if (!sepMatch || sepMatch.index === undefined) return [];
   if (line.slice(sepMatch.index + sepMatch[0].length).trim() === '') return [];
   const domainPart = line.slice(0, sepMatch.index);
@@ -107,7 +107,7 @@ export function detectDomainListEdges(line: string): LintResult | null {
   const trimmed = line.trimStart();
   // @@, |, and /regex/ lines are network rules — a "#<sep>" there is pattern text, not a separator
   if (trimmed.startsWith('@@') || trimmed.startsWith('|') || trimmed.startsWith('/')) return null;
-  const sepMatch = line.match(/#(\$#|#|\?#|@#)/);
+  const sepMatch = line.match(/#(@\$|[@?$])?#/);
   if (!sepMatch || sepMatch.index === undefined) return null;
   const domainPart = line.slice(0, sepMatch.index);
   if (/[/|@"!]/.test(domainPart)) return null;

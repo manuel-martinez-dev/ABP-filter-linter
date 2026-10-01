@@ -821,6 +821,7 @@
     },
     "log-if-computed-style-matches": {
       "since": "4.27.0",
+      "race": true,
       "args": [
         {
           "name": "type",
@@ -839,6 +840,7 @@
     },
     "log-if-iframe-loads": {
       "since": "4.27.0",
+      "race": true,
       "args": [
         {
           "name": "urlPattern",
@@ -856,6 +858,7 @@
     },
     "log-if-script-loads": {
       "since": "4.27.0",
+      "race": true,
       "args": [
         {
           "name": "urlPattern",
@@ -873,6 +876,7 @@
     },
     "log-if-selector-exists": {
       "since": "4.27.0",
+      "race": true,
       "args": [
         {
           "name": "selector",
@@ -949,6 +953,7 @@
     },
     "log-if-inline-script-contains-fingerprint": {
       "since": "4.28.0",
+      "race": true,
       "args": [
         {
           "name": "textPattern",
@@ -966,6 +971,7 @@
     },
     "log-if-anchor-href-matches": {
       "since": "4.28.0",
+      "race": true,
       "args": [
         {
           "name": "urlPattern",
@@ -983,6 +989,7 @@
     },
     "log-if-element-loads": {
       "since": "4.29.0",
+      "race": true,
       "args": [
         {
           "name": "urlPattern",

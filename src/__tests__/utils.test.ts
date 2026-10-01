@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { isRestrictedByDomain } from '../validators/utils';
+import { isRestrictedByDomain, domainScope } from '../validators/utils';
+
+describe('domainScope', () => {
+  it.each([
+    [[], 'global'],
+    [['~a.com'], 'exclusion-only'],
+    [['~a.com', '~b.com'], 'exclusion-only'],
+    [['foo'], 'scoped'],
+    [['a.com'], 'scoped'],
+    [['~a.com', 'b.com'], 'scoped'],
+  ])('%j -> %s', (domains, expected) => {
+    expect(domainScope(domains)).toBe(expected);
+  });
+});
 
 describe('isRestrictedByDomain', () => {
   it('is false for an empty domain list', () => {

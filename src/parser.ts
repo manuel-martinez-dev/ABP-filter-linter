@@ -1,6 +1,7 @@
 export type FilterType =
   | 'comment'
   | 'snippet'       // #$#
+  | 'snippet-exception' // #@$#
   | 'extended'      // #?#
   | 'hiding-exception' // #@#
   | 'cosmetic'      // ##
@@ -20,6 +21,7 @@ export interface ParsedLine {
 }
 
 const SEPARATORS = [
+  { sep: '#@$#', type: 'snippet-exception' as FilterType },
   { sep: '#$#', type: 'snippet' as FilterType },
   { sep: '#?#', type: 'extended' as FilterType },
   { sep: '#@#', type: 'hiding-exception' as FilterType },
@@ -83,6 +85,7 @@ export function isAbpDocument(lines: string[]): boolean {
   if (lines.some(l => l.startsWith('[Adblock'))) return true;
   return lines.some(l =>
     l.includes('#$#') ||
+    l.includes('#@$#') ||
     l.includes('#?#') ||
     l.includes('#@#') ||
     l.startsWith('@@') ||

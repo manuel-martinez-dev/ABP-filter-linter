@@ -605,6 +605,36 @@ describe('validateSnippetChain — race block', () => {
     expect(validateSnippetChain(calls, 0)).toHaveLength(0);
   });
 
+  it.each([
+    'log-if-selector-exists div.ad t',
+    'log-if-computed-style-matches color red',
+    'log-if-element-loads img.ad',
+    'log-if-inline-script-contains-fingerprint abc',
+  ])('allows %s inside a race block', snippet => {
+    const calls = splitSnippetChain(`race start; ${snippet}; race stop`);
+    expect(validateSnippetChain(calls, 0)).toHaveLength(0);
+  });
+
+  it('allows several log-if-selector-exists calls with CSS and xpath selectors in one race', () => {
+    const calls = splitSnippetChain("race start; log-if-selector-exists 'div.ad' t; log-if-selector-exists 'xpath(//div)' t; race stop");
+    expect(validateSnippetChain(calls, 0)).toHaveLength(0);
+  });
+
+  it.each([
+    'log-if-anchor-href-matches a b',
+    'log-if-iframe-loads a b',
+    'log-if-script-loads a b',
+  ])('allows deprecated wrapper %s inside a race block and keeps its deprecation warning', snippet => {
+    const calls = splitSnippetChain(`race start; ${snippet}; race stop`);
+    expect(validateSnippetChain(calls, 0)).toHaveLength(0);
+    expect(validateSnippetCall(calls[1], 0).some(r => r.message.includes('Deprecated snippet'))).toBe(true);
+  });
+
+  it('still rejects hide-if-canvas-contains inside a race block', () => {
+    const calls = splitSnippetChain('race start; hide-if-canvas-contains a b; race stop');
+    expect(validateSnippetChain(calls, 0).some(r => r.message.includes('not supported inside a race block'))).toBe(true);
+  });
+
   it('errors on race start without matching race stop', () => {
     const calls = splitSnippetChain('race start; hide-if-contains foo .bar');
     const results = validateSnippetChain(calls, 0);

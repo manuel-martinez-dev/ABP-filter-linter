@@ -416,3 +416,32 @@ describe('validateContentDomainEntries', () => {
     expect(results[0].message).toContain('exa mple*.com');
   });
 });
+
+describe('domain-list checks on snippet exceptions (#@$#)', () => {
+  it.each([
+    ['a.com,,b.com#@$#log hi', detectDoubleComma],
+    ['a.com,~,b.com#@$#log hi', detectDomainListEdges],
+    ['example.com, foo.com#@$#log hi', detectSpacesInDomains],
+  ])('flags %s', (line, detect) => {
+    expect(detect(line)).not.toBeNull();
+  });
+
+  it('rejects an invalid wildcard as an error', () => {
+    const results = validateContentDomainEntries('shop*.com#@$#log hi');
+    expect(results).toEqual([expect.objectContaining({ severity: 'error', message: expect.stringContaining('shop*.com') })]);
+  });
+
+  it('accepts a trailing .* wildcard', () => {
+    expect(validateContentDomainEntries('example.com.*#@$#log')).toEqual([]);
+  });
+
+  it('ignores commas and spaces inside the body', () => {
+    expect(detectDoubleComma('example.com#@$#log a,,b')).toBeNull();
+    expect(detectSpacesInDomains('example.com#@$#log a b c')).toBeNull();
+  });
+
+  it('finds the separator before a later ## in the body', () => {
+    expect(detectSpacesInDomains('example.com#@$##ad')).toBeNull();
+    expect(validateContentDomainEntries('/foo bar#@$#baz/')).toEqual([]);
+  });
+});
