@@ -70,6 +70,19 @@ function checkPatternSpecificity(pattern: string, bodyOffset: number, results: L
   });
 }
 
+// Warn about doubled separators; skip regex filters where "^" is an anchor.
+function checkDoubledSeparator(pattern: string, bodyOffset: number, results: LintResult[]): void {
+  if (isRegexFilter(pattern)) return;
+  const idx = pattern.indexOf('^^');
+  if (idx === -1) return;
+  results.push({
+    message: 'Doubled separator "^^" — likely a typo; did you mean "^"?',
+    severity: 'warning',
+    startCol: bodyOffset + idx,
+    endCol: bodyOffset + idx + 2,
+  });
+}
+
 // Option-list shape — looser than ABP core ([\w.*-], optional space after commas) so domain-like typos still get flagged
 const OPTION_LIST = String.raw`~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*`;
 const OPTIONS_RE = new RegExp(String.raw`^(.*)\$(${OPTION_LIST})$`);
@@ -205,6 +218,7 @@ export function validateNetworkRule(
   const results: LintResult[] = [];
 
   const dollarIdx = findOptionsSeparator(body);
+  checkDoubledSeparator(dollarIdx === -1 ? body : body.slice(0, dollarIdx), bodyOffset, results);
   const regexBodyResult = checkRegexBody(body, dollarIdx, bodyOffset);
   if (regexBodyResult) results.push(regexBodyResult);
 

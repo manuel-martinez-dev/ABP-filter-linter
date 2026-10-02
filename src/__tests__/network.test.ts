@@ -1,5 +1,54 @@
 import { describe, it, expect } from 'vitest';
 import { validateNetworkRule, findOptionsSeparator } from '../validators/network';
+import { parseLine } from '../parser';
+
+describe('doubled network separators', () => {
+  it.each([
+    '||example.com^^$domain=example.net',
+    '||example.com^^',
+    '@@||example.com^^$domain=example.net',
+    '||example.com/path^^next$script',
+  ])('warns once and highlights the doubled separator: %s', line => {
+    const parsed = parseLine(line, 0);
+    expect(validateNetworkRule(parsed.body, parsed.type === 'exception', parsed.bodyOffset)).toEqual([
+      {
+        message: 'Doubled separator "^^" — likely a typo; did you mean "^"?',
+        severity: 'warning',
+        startCol: line.indexOf('^^'),
+        endCol: line.indexOf('^^') + 2,
+      },
+    ]);
+  });
+
+  it.each([
+    '||example.com^$domain=example.net',
+    '||example.com^',
+    '/foo^^bar/$domain=example.net',
+    '/foo^^bar/',
+    '@@/foo^^bar/$domain=example.net',
+  ])('leaves single separators and regex patterns alone: %s', line => {
+    const parsed = parseLine(line, 0);
+    expect(validateNetworkRule(parsed.body, parsed.type === 'exception', parsed.bodyOffset)).toEqual([]);
+  });
+
+  it('checks patterns even when sitekey= bypasses specificity validation', () => {
+    const results = validateNetworkRule('||example.com^^$sitekey=abc', false, 0);
+    expect(results).toHaveLength(2);
+    expect(results).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining('Doubled separator "^^"'),
+      severity: 'warning',
+      startCol: 13,
+      endCol: 15,
+    }));
+    expect(results).toContainEqual(expect.objectContaining({ message: expect.stringContaining('Chrome (MV3)') }));
+  });
+
+  it('does not treat doubled carets in an option value as separators', () => {
+    expect(validateNetworkRule('||example.com^$header=X-Test=^^', false, 0)).toEqual([
+      expect.objectContaining({ message: '"header" has no effect in Chrome (MV3) — Firefox only' }),
+    ]);
+  });
+});
 
 describe('validateNetworkRule', () => {
   it.each(['~document,script', 'script,~document', '~document,~script'])
