@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseLine, isAbpDocument } from '../parser';
 import { lintLine } from '../validators/lint-line';
 import { buildDuplicateKey } from '../validators/syntax';
+import { REPLACEMENT_ARGS } from '../validators/snippets';
+import snippetData from '../data/snippets.json';
 import type { LintResult } from '../types';
 
 const lint = (line: string): LintResult[] => lintLine(parseLine(line, 0));
@@ -114,6 +116,50 @@ describe('lintLine — double-quoted arguments', () => {
   it('does not warn on a double quote inside a regex', () => {
     expect(warnings('example.com#@$#hide-if-contains /a"b/ div').some(r => r.message.includes('Double quotes'))).toBe(false);
   });
+
+  const quoted = (line: string) => warnings(line).filter(r => r.message.includes('Double quotes'));
+
+  it('does not warn on a JSON fragment in a replacement argument', () => {
+    expect(quoted('a.com#$#replace-fetch-response /"x":"1"/ "x":"0"')).toHaveLength(0);
+    expect(quoted('a.com#@$#replace-fetch-response /"x":"1"/ "x":"0"')).toHaveLength(0);
+  });
+
+  it('still warns on a whole quoted replacement without interior quotes', () => {
+    expect(quoted('a.com#$#replace-fetch-response /x/ "none"')).toHaveLength(1);
+  });
+
+  it('still warns on interior quotes outside replacement arguments', () => {
+    expect(quoted('a.com#$#abort-on-property-read "foo"')).toHaveLength(1);
+    expect(quoted(String.raw`a.com#$#log "a\"b"`)).toHaveLength(1);
+  });
+
+  it('accepts escaped interior quotes in a replacement argument (known cost)', () => {
+    expect(quoted(String.raw`a.com#$#replace-fetch-response /x/ "a\"b"`)).toHaveLength(0);
+  });
+
+  it('honours the event-override rewrite condition', () => {
+    expect(quoted('a.com#$#event-override click rewrite /a/ p /b/ "x":"1"')).toHaveLength(0);
+    expect(quoted('a.com#$#event-override click trusted /a/ p /b/ "x":"1"')).toHaveLength(1);
+  });
+
+  it('every schema argument named replacement is listed in REPLACEMENT_ARGS', () => {
+    const schemas = snippetData.snippets as Record<string, { args: Array<{ name: string }> }>;
+    const unlisted = Object.entries(schemas).flatMap(([name, s]) =>
+      s.args.flatMap((a, i) => a.name === 'replacement' && REPLACEMENT_ARGS[name] !== i ? [`${name}[${i}]`] : []));
+    expect(unlisted).toEqual([]);
+  });
+
+  it('every REPLACEMENT_ARGS entry matches a replacement argument in the schema', () => {
+    const schemas = snippetData.snippets as Record<string, { args: Array<{ name: string; when?: { arg: number; equals: string } }> }>;
+    for (const [name, index] of Object.entries(REPLACEMENT_ARGS)) {
+      const arg = schemas[name]?.args[index];
+      expect(arg?.name, name).toBe('replacement');
+      const args = Array<string>(index + 1).fill('a');
+      if (arg?.when) args[arg.when.arg] = arg.when.equals;
+      args[index] = '"x":"1"';
+      expect(quoted(`a.com#$#${name} ${args.join(' ')}`), name).toHaveLength(0);
+    }
+  });
 });
 
 describe('snippet exception parsing and documents', () => {
@@ -182,5 +228,32 @@ describe('lintLine — escaped hyphen in a character class', () => {
     const results = lint(`example.com#$#hide-if-contains '${pattern}' div`);
     expect(results.filter(r => r.message.includes('Malformed regex'))).toHaveLength(1);
     expect(results.filter(r => r.message.includes('range operator'))).toEqual([]);
+  });
+});
+
+describe('lintLine — lost escapes in deprecated log-if wrappers', () => {
+  const WRAPPERS = ['log-if-script-loads', 'log-if-iframe-loads', 'log-if-anchor-href-matches'];
+  const escapeWarnings = (line: string) => warnings(line).filter(r => r.message.includes('loses its backslash'));
+  const deprecated = (line: string) => warnings(line).filter(r => r.message.includes('Deprecated snippet'));
+
+  it.each(WRAPPERS)('reports the lost escape and the deprecation on %s', name => {
+    const line = String.raw`#$#${name} /a\.com/ t`;
+    expect(escapeWarnings(line)).toHaveLength(1);
+    expect(deprecated(line)).toHaveLength(1);
+  });
+
+  it('stays silent on a bracketed dot, keeping only the deprecation', () => {
+    const line = String.raw`#$#log-if-script-loads /a[.]com/ t`;
+    expect(escapeWarnings(line)).toEqual([]);
+    expect(deprecated(line)).toHaveLength(1);
+  });
+
+  it('still reports on log-if-element-loads (control)', () => {
+    expect(escapeWarnings(String.raw`#$#log-if-element-loads /a\.com/ script`)).toHaveLength(1);
+  });
+
+  it.each(WRAPPERS)('marks urlPattern of %s as a regex argument', name => {
+    const schemas = snippetData.snippets as Record<string, { args: Array<{ regex?: unknown }> }>;
+    expect(schemas[name].args[0].regex).toBe(true);
   });
 });

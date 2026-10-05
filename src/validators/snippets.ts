@@ -553,13 +553,29 @@ export function validateSnippetCall(
   return results;
 }
 
+// Replacement-text args (zero-based), where interior literal quotes (JSON fragments) are expected
+export const REPLACEMENT_ARGS: Readonly<Record<string, number>> = {
+  'blob-override': 1,
+  'replace-fetch-response': 1,
+  'replace-fetch-request': 1,
+  'replace-xhr-response': 1,
+  'replace-xhr-request': 1,
+  'replace-outbound-value': 2,
+  'replace-argument': 3,
+  'event-override': 5,
+};
+
 export function detectDoubleQuotedArgs(body: string, calls: SnippetCall[], bodyOffset: number): LintResult[] {
   const results: LintResult[] = [];
   for (const call of calls) {
+    const schema = SNIPPETS[call.name];
     for (const [index, off] of (call.argOffsets ?? []).entries()) {
       if (body[off.start - 1] === "'" || regexParts(call.args[index])) continue;
       const raw = body.slice(off.start, off.end);
       if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) continue;
+      const arg = schema && argumentSchema(schema, index);
+      if (REPLACEMENT_ARGS[call.name] === index && arg && activeArgument(arg, call.runtimeArgs ?? call.args) &&
+          raw.slice(1, -1).includes('"')) continue;
       results.push({
         message: 'Double quotes around an argument are literal characters, possibly unintended — use single quotes to quote it',
         severity: 'warning',
@@ -674,7 +690,7 @@ export function detectLostRegexEscapes(body: string, calls: SnippetCall[], bodyO
   for (const call of calls) {
     if (!call.argOffsets || hasDecodingFailure(call)) continue;
     const schema = SNIPPETS[call.name];
-    if (!schema || DEPRECATED[call.name]) continue;
+    if (!schema) continue;
     const args = call.runtimeArgs ?? call.args;
     for (const [index, off] of call.argOffsets.entries()) {
       const arg = argumentSchema(schema, index);

@@ -844,7 +844,8 @@
       "args": [
         {
           "name": "urlPattern",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "type",
@@ -862,7 +863,8 @@
       "args": [
         {
           "name": "urlPattern",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "type",
@@ -975,7 +977,8 @@
       "args": [
         {
           "name": "urlPattern",
-          "required": true
+          "required": true,
+          "regex": true
         },
         {
           "name": "type",
