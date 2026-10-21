@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import snippetData from '../data/snippets.json';
-import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectMissingSnippetSeparator, detectMalformedSnippetSeparator, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import modifierData from '../data/modifiers.json';
+import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
+import { detectMissingSnippetSeparator, detectMalformedSnippetSeparator } from '../validators/damaged-content';
 
 describe('snippet regex syntax', () => {
   const run = (body: string, offset = 0) => splitSnippetChain(body)
@@ -1274,5 +1276,12 @@ describe('schema drift fixes — regression guards', () => {
   it('allows hide-if-canvas-contains with mode data (unrelated snippet, sanity check)', () => {
     const calls = splitSnippetChain("hide-if-canvas-contains /iVBOR/ '#ad' '' data");
     expect(validateSnippetCall(calls[0], 0)).toHaveLength(0);
+  });
+});
+
+describe('snippet and modifier names', () => {
+  it('never overlap', () => {
+    const modifiers = new Set<string>(modifierData.valid);
+    expect(Object.keys(snippetData.snippets).filter(n => modifiers.has(n))).toEqual([]);
   });
 });

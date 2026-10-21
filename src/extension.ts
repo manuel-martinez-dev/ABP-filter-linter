@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { parseLine, isAbpDocument } from './parser';
-import { lintLine } from './validators/lint-line';
-import { detectDoubleComma, detectDomainListEdges, detectSpacesInDomains, detectTrailingWhitespace, buildDuplicateKey, validateContentDomainEntries } from './validators/syntax';
+import { lintRawLine } from './validators/lint-line';
+import { buildDuplicateKey } from './validators/syntax';
 import { toDiagnostic } from './diagnostics';
 
 const COLLECTION_NAME = 'abp-filter-linter';
@@ -61,23 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
       const parsed = parseLine(lines[i], i);
       if (parsed.type === 'comment' || parsed.type === 'unknown') continue;
 
-      const doubleComma = detectDoubleComma(lines[i]);
-      if (doubleComma) diagnostics.push(toDiagnostic(doubleComma, i, doc));
-
-      const domainListEdges = detectDomainListEdges(lines[i]);
-      if (domainListEdges) diagnostics.push(toDiagnostic(domainListEdges, i, doc));
-
-      const spacesInDomains = detectSpacesInDomains(lines[i]);
-      if (spacesInDomains) diagnostics.push(toDiagnostic(spacesInDomains, i, doc));
-
-      for (const invalidDomainEntry of validateContentDomainEntries(lines[i])) {
-        diagnostics.push(toDiagnostic(invalidDomainEntry, i, doc));
-      }
-
-      const trailingWs = detectTrailingWhitespace(lines[i]);
-      if (trailingWs) diagnostics.push(toDiagnostic(trailingWs, i, doc));
-
-      for (const r of lintLine(parsed)) {
+      for (const r of lintRawLine(lines[i], i, parsed)) {
         diagnostics.push(toDiagnostic(r, i, doc));
       }
 

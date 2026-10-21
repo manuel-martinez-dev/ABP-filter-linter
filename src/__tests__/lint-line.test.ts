@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseLine, isAbpDocument } from '../parser';
-import { lintLine } from '../validators/lint-line';
+import { lintLine, lintRawLine } from '../validators/lint-line';
 import { buildDuplicateKey } from '../validators/syntax';
 import { REPLACEMENT_ARGS } from '../validators/snippets';
 import snippetData from '../data/snippets.json';
@@ -255,5 +255,110 @@ describe('lintLine — lost escapes in deprecated log-if wrappers', () => {
   it.each(WRAPPERS)('marks urlPattern of %s as a regex argument', name => {
     const schemas = snippetData.snippets as Record<string, { args: Array<{ regex?: unknown }> }>;
     expect(schemas[name].args[0].regex).toBe(true);
+  });
+});
+
+describe('lintRawLine — damaged content filters', () => {
+  const raw = (line: string) => lintRawLine(line, 0);
+  const LINE1 = 'example.com,example.org,example.net-property-read Foo.bar false';
+  const LINE2 = 'example.com,example.org|example.net#$#abort-property-read Foo.bar false';
+
+  it('reports the repaired-text domain error at the raw column', () => {
+    const results = raw('example.com|ex*ample.org#$#abort-on-property-read x');
+    expect(results.map(r => r.severity)).toEqual(['error', 'error']);
+    expect(results[0].message).toContain('"|" in domain list');
+    expect(results[1]).toMatchObject({ message: expect.stringContaining('Invalid wildcard in domain'), startCol: 12, endCol: 24 });
+  });
+
+  it('reports trailing whitespace once on a repaired line', () => {
+    expect(raw('example.com|example.org##.ad  ').filter(r => r.message === 'Trailing whitespace')).toHaveLength(1);
+  });
+
+  it('keeps network findings alongside a hint', () => {
+    const results = raw('example.comabort-on-property-read');
+    expect(results.map(r => r.message)).toEqual([expect.stringContaining('Missing "#$#"')]);
+  });
+
+  it('leaves separator detection out of lintLine', () => {
+    for (const line of ['example.com#$abort-on-property-read x', 'example.comabort-on-property-read x']) {
+      expect(lint(line).some(r => r.message.includes('#$#'))).toBe(false);
+    }
+  });
+
+  it('gives line 1 the truncated-name hint with all candidates and no safety net', () => {
+    const messages = raw(LINE1).map(r => r.message);
+    expect(messages[0]).toContain('abort-on-property-read, abort-on-iframe-property-read, override-property-read');
+    expect(messages.some(m => m.includes('Domain list in a network pattern') || m.includes('Whitespace in a network pattern'))).toBe(false);
+  });
+
+  it('gives line 2 the pipe error and the unknown snippet, nothing from the network reading', () => {
+    const results = raw(LINE2);
+    expect(results).toEqual([
+      expect.objectContaining({ severity: 'error', message: expect.stringContaining('"|" in domain list') }),
+      expect.objectContaining({ severity: 'error', message: expect.stringContaining('Unknown snippet "abort-property-read"') }),
+    ]);
+  });
+
+  it('puts network findings at the raw column of an indented line', () => {
+    expect(lint('  ||example.com^$foo').find(r => r.message.includes('Unknown modifier'))).toMatchObject({ startCol: 17, endCol: 20 });
+  });
+
+  describe('document detection', () => {
+    it('does not recognise a headerless document with only line 1', () => {
+      expect(isAbpDocument([LINE1])).toBe(false);
+    });
+
+    it.each([
+      ['headerless line 1 + line 2', [LINE1, LINE2]],
+      ['header + line 1', ['[Adblock Plus 2.0]', LINE1]],
+      ['header + line 2', ['[Adblock Plus 2.0]', LINE2]],
+    ])('recognises %s and lints each line', (_, lines) => {
+      expect(isAbpDocument(lines)).toBe(true);
+      for (const line of lines) {
+        if (line === LINE1) expect(raw(line)[0].message).toContain('truncated name');
+        if (line === LINE2) expect(raw(line).map(r => r.message)).toEqual([expect.stringContaining('"|" in domain list'), expect.stringContaining('Unknown snippet')]);
+      }
+    });
+  });
+});
+
+describe('lintRawLine — mutation sweep', () => {
+  const DOMAINS = 'example.com,example.org,example.net';
+  const NAME = 'abort-on-property-read';
+  const SNIPPET = `${DOMAINS}#$#${NAME} Foo.bar false`;
+  const BASES = [
+    { line: SNIPPET, sep: '#$#', name: NAME },
+    { line: `${DOMAINS}##.ad`, sep: '##', name: '' },
+    { line: `${DOMAINS}#?#div:-abp-has(.ad)`, sep: '#?#', name: '' },
+  ];
+  const SEPARATOR_MANGLES = ['#$', '$#', '##$', '#$$#', '#$ #', '#', '##'];
+  const ALLOWED = new Map([
+    [`${DOMAINS}##div:-abp-has(.ad)`, 'deleting "?" from #?# leaves a ## filter the linter reads as CSS'],
+  ]);
+  const raw = (line: string) => lintRawLine(line, 0);
+
+  const mutations: Array<{ line: string; recoverable: boolean }> = [];
+  for (const { line, sep, name } of BASES) {
+    const sepStart = line.indexOf(sep);
+    const isSnippet = sep === '#$#';
+    for (let i = sepStart; i < sepStart + sep.length + name.length; i++) {
+      mutations.push({ line: line.slice(0, i) + line.slice(i + 1), recoverable: isSnippet && i < sepStart + sep.length });
+    }
+    for (let i = 0; i < sepStart; i++) {
+      if (line[i] === ',') mutations.push({ line: `${line.slice(0, i)}|${line.slice(i + 1)}`, recoverable: isSnippet });
+    }
+  }
+  for (const mangle of SEPARATOR_MANGLES) {
+    mutations.push({ line: SNIPPET.replace('#$#', () => mangle), recoverable: true });
+  }
+
+  it.each(mutations.filter(m => !ALLOWED.has(m.line)))('flags $line', ({ line, recoverable }) => {
+    const messages = raw(line).map(r => r.message);
+    expect(messages.length).toBeGreaterThan(0);
+    if (recoverable) expect(messages.some(m => m.includes('#$#') || m.includes('#@$#'))).toBe(true);
+  });
+
+  it('only allowlists mutations the sweep generates', () => {
+    for (const line of ALLOWED.keys()) expect(mutations.some(m => m.line === line)).toBe(true);
   });
 });

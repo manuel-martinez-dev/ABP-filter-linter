@@ -1,9 +1,6 @@
 import { RegExpParser, visitRegExpAST } from '@eslint-community/regexpp';
 import snippetData from '../data/snippets.json';
-import modifierData from '../data/modifiers.json';
 import type { LintResult } from '../types';
-
-const VALID_MODIFIERS = new Set(modifierData.valid);
 
 interface ArgSchema {
   name: string;
@@ -767,60 +764,6 @@ export function detectDuplicateCalls(calls: SnippetCall[], bodyOffset: number): 
   }
 
   return results;
-}
-
-/** Detect a network-classified line that looks like a snippet filter missing the #$# separator */
-export function detectMissingSnippetSeparator(raw: string): LintResult | null {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.startsWith('!') || trimmed.startsWith('||') || trimmed.startsWith('|') || trimmed.startsWith('@@')) return null;
-  if (trimmed.includes('$')) return null;
-
-  const spaceIdx = trimmed.indexOf(' ');
-  const firstToken = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-
-  for (const snippetName of Object.keys(SNIPPETS)) {
-    if (firstToken.endsWith(snippetName)) {
-      const domainPart = firstToken.slice(0, -snippetName.length);
-      if (domainPart.length > 0 && /^[a-zA-Z0-9*-]+(\.[a-zA-Z0-9*-]+)+$/.test(domainPart)) {
-        const rest = trimmed.slice(domainPart.length);
-        return {
-          message: `Missing "#$#" separator — did you mean "${domainPart}#$#${rest}"?`,
-          severity: 'warning',
-          startCol: 0,
-          endCol: trimmed.length,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-/** True if `rest` reads as a network option list (comma-separated known modifiers, no spaces) */
-function looksLikeNetworkOptions(rest: string): boolean {
-  if (/\s/.test(rest)) return false;
-  return rest.split(',').every(tok => VALID_MODIFIERS.has(tok.replace(/^~/, '').split('=')[0]));
-}
-
-/** Detect a network-classified line using a mangled "#$#" snippet separator (e.g. "$#", "#$") */
-export function detectMalformedSnippetSeparator(raw: string): LintResult | null {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.startsWith('!') || trimmed.startsWith('@@')) return null;
-
-  // <domain-list><run of # and $ containing at least one $><rest>
-  const m = /^(~?[a-zA-Z0-9*-]+(?:\.[a-zA-Z0-9*-]+)+(?:,~?[a-zA-Z0-9*-]+(?:\.[a-zA-Z0-9*-]+)+)*)([#$]*\$[#$]*)(.+)$/.exec(trimmed);
-  if (!m) return null;
-
-  const [, domainPart, sep, rest] = m;
-  if (sep === '#$#' || !sep.includes('#')) return null;
-  // "example.com#$script": trailing "#" is a literal pattern char, "$script" is real options.
-  if (sep === '#$' && looksLikeNetworkOptions(rest)) return null;
-
-  return {
-    message: `Malformed snippet separator "${sep}" — did you mean "${domainPart}#$#${rest}"?`,
-    severity: 'warning',
-    startCol: 0,
-    endCol: trimmed.length,
-  };
 }
 
 /** Validate race block structure across a full snippet chain */
