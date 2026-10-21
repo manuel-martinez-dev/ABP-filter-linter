@@ -20,6 +20,7 @@ const INVALID_HEADER_VALUE_RE = /[^\x20-\x7E]/;
 export const PATTERN_TOO_SHORT = 'Generic pattern too short';
 export const DOUBLED_SEPARATOR = 'Doubled separator "^^"';
 export const MISSING_OPTION_SEPARATOR = 'looks like a filter option but has no "$"';
+export const MISSING_REGEX_OPTION_SEPARATOR = 'Likely missing "$" between the regex and filter options';
 const DOMAIN_ENTRY_RE = /^[\w-]+(\.[\w-]+)*$/;
 
 // ABP ignores "~" on these options (stripped before its option switch), so values are still required/validated
@@ -90,6 +91,8 @@ function checkDoubledSeparator(pattern: string, bodyOffset: number, results: Lin
 const OPTION_LIST = String.raw`~?[\w.*-]+(?:=[^,]*)?(?:,[ \t]*~?[\w.*-]+(?:=[^,]*)?)*`;
 const OPTIONS_RE = new RegExp(String.raw`^(.*)\$(${OPTION_LIST})$`);
 const OPTION_TAIL_RE = new RegExp(String.raw`\^(${OPTION_LIST})$`);
+const OPTION_LIST_RE = new RegExp(String.raw`^(?:${OPTION_LIST})$`);
+const LEADING_OPTION_NAME_RE = /^~?([\w.*-]+)/;
 
 export function isRegexFilter(body: string): boolean {
   return body.length > 1 && body.startsWith('/') && body.endsWith('/');
@@ -185,6 +188,50 @@ function checkRegexBody(body: string, dollarIdx: number, bodyOffset: number): Li
   return null;
 }
 
+function optionNames(list: string): string[] {
+  return list.split(',').map(s => s.trim().replace(/^~/, '').split('=')[0].toLowerCase());
+}
+
+/** Dropped "$" after a "/^" regex; ABP reads the line as literal URL text */
+function findMissingRegexOptionSeparator(
+  body: string,
+  isException: boolean,
+  bodyOffset: number
+): LintResult | null {
+  if (!body.startsWith('/^') || isRegexFilter(body)) return null;
+  const boundaries: number[] = [];
+  for (let slash = body.lastIndexOf('/'); slash > 0; slash = body.lastIndexOf('/', slash - 1)) {
+    const tail = body.slice(slash + 1);
+    const first = LEADING_OPTION_NAME_RE.exec(tail);
+    if (!first || !VALID_MODIFIERS.has(first[1].toLowerCase())) continue;
+    if (!OPTION_LIST_RE.test(tail) || !optionNames(tail).every(n => VALID_MODIFIERS.has(n))) continue;
+    if (findOptionsSeparator(`${body.slice(0, slash + 1)}$${tail}`) !== slash + 1) continue;
+    boundaries.push(slash);
+  }
+  // ambiguous boundary: skip
+  if (boundaries.length !== 1) return null;
+
+  const slash = boundaries[0];
+  const pattern = body.slice(0, slash + 1);
+  const tail = body.slice(slash + 1);
+  const source = pattern.replace(/\s+/g, '').slice(1, -1);
+  let compiles = true;
+  try {
+    new RegExp(source, hasEffectiveMatchCase(tail.replace(/\s+/g, '')) ? '' : 'i');
+  } catch {
+    compiles = false;
+  }
+  const confident = compiles && new Set(optionNames(tail)).size >= 2;
+  const prefix = isException ? '@@' : '';
+  return {
+    message: `${MISSING_REGEX_OPTION_SEPARATOR} — did you mean "${prefix}${pattern}$${tail}"? `
+      + 'As written, ABP reads the whole line, options included, as literal URL text.',
+    severity: confident ? 'error' : 'warning',
+    startCol: bodyOffset + slash,
+    endCol: bodyOffset + slash + 1 + tail.split(',')[0].trimEnd().length,
+  };
+}
+
 /** A dropped "$" leaves a valid filter whose option names are matched as literal URL text */
 function checkMissingOptionSeparator(
   body: string,
@@ -195,10 +242,7 @@ function checkMissingOptionSeparator(
   if (isRegexFilter(body)) return;
   const m = OPTION_TAIL_RE.exec(body);
   if (!m) return;
-  const names = m[1]
-    .split(',')
-    .map(s => s.trim().replace(/^~/, '').split('=')[0].toLowerCase());
-  if (!names.every(n => VALID_MODIFIERS.has(n))) return;
+  if (!optionNames(m[1]).every(n => VALID_MODIFIERS.has(n))) return;
   const caretIdx = body.length - m[0].length;
   // parser strips "@@", so put it back or the suggestion turns an exception into a blocking rule
   const prefix = isException ? '@@' : '';
@@ -221,6 +265,10 @@ export function validateNetworkRule(
   const results: LintResult[] = [];
 
   const dollarIdx = findOptionsSeparator(body);
+  if (dollarIdx === -1) {
+    const missingRegexSep = findMissingRegexOptionSeparator(body, isException, bodyOffset);
+    if (missingRegexSep) return [missingRegexSep];
+  }
   checkDoubledSeparator(dollarIdx === -1 ? body : body.slice(0, dollarIdx), bodyOffset, results);
   const regexBodyResult = checkRegexBody(body, dollarIdx, bodyOffset);
   if (regexBodyResult) results.push(regexBodyResult);

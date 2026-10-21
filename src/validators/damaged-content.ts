@@ -2,13 +2,13 @@ import { parseLine } from '../parser';
 import type { ParsedLine } from '../parser';
 import type { LintResult } from '../types';
 import { SNIPPET_NAMES, SNIPPET_NAME_SET, closestSnippet, splitSnippetChain } from './snippets';
-import { findOptionsSeparator, isRegexFilter, VALID_MODIFIERS, PATTERN_TOO_SHORT, MISSING_OPTION_SEPARATOR, DOUBLED_SEPARATOR } from './network';
+import { findOptionsSeparator, isRegexFilter, VALID_MODIFIERS, PATTERN_TOO_SHORT, MISSING_OPTION_SEPARATOR, MISSING_REGEX_OPTION_SEPARATOR, DOUBLED_SEPARATOR } from './network';
 import { isDomainLike, abbreviateDomains, DOMAIN_PATTERN } from './utils';
 
 const MALFORMED_SEPARATOR_RE = new RegExp(String.raw`^(${DOMAIN_PATTERN}(?:,${DOMAIN_PATTERN})*)(\s*[#$@](?:\s*[#$@])*)\s*(\S.*)$`);
 const PIPE_PREFIX_RE = /^([^/@"!#]*?)(#@\$#|#\$#|#\?#|#@#|##)/;
 const CONTENT_TYPES = new Set(['cosmetic', 'hiding-exception', 'extended']);
-const PATTERN_SHAPE_MARKERS = [PATTERN_TOO_SHORT, MISSING_OPTION_SEPARATOR, DOUBLED_SEPARATOR];
+const PATTERN_SHAPE_MARKERS = [PATTERN_TOO_SHORT, MISSING_OPTION_SEPARATOR, MISSING_REGEX_OPTION_SEPARATOR, DOUBLED_SEPARATOR];
 const MIN_TAIL_LENGTH = 8;
 const MAX_ECHOED_PATTERN = 60;
 const DOMAIN_LIST_IN_PATTERN = 'Domain list in a network pattern';

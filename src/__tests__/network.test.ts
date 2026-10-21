@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateNetworkRule, findOptionsSeparator } from '../validators/network';
+import { validateNetworkRule, findOptionsSeparator, MISSING_REGEX_OPTION_SEPARATOR } from '../validators/network';
 import { parseLine } from '../parser';
 
 describe('doubled network separators', () => {
@@ -690,6 +690,73 @@ describe('missing options separator', () => {
 
   it('stays quiet on an ordinary blocking filter', () => {
     expect(validateNetworkRule('||ads.example.com^', false, 0)).toHaveLength(0);
+  });
+});
+
+describe('missing options separator after a regex', () => {
+  const REGEX = String.raw`/^https:\/\/(?:[a-z]{2,5}\.){1,2}[a-z]{6,}\.com\/(?:[a-z]{3,}-[a-z]{2,}\/[A-Za-z0-9_-]{4,}\.js$|script\/[a-z0-9.-]+\.js(?:\?|))/`;
+  const OPTIONS = 'script,third-party,match-case,domain=example.com|example.org';
+  const findings = (body: string, isException = false, bodyOffset = 0) =>
+    validateNetworkRule(body, isException, bodyOffset).filter(r => r.message.includes(MISSING_REGEX_OPTION_SEPARATOR));
+  const finding = (body: string, isException = false, bodyOffset = 0) => {
+    const results = findings(body, isException, bodyOffset);
+    expect(results).toHaveLength(1);
+    return results[0];
+  };
+
+  it('errors on the reported structure and suggests the "$" at the regex end', () => {
+    const result = finding(REGEX + OPTIONS);
+    expect(result).toMatchObject({ severity: 'error', startCol: REGEX.length - 1, endCol: REGEX.length + 'script'.length });
+    expect(result.message).toContain(`"${REGEX}$${OPTIONS}"`);
+  });
+
+  it('has no missing-separator finding once the "$" is inserted', () => {
+    expect(findings(`${REGEX}$${OPTIONS}`)).toEqual([]);
+  });
+
+  it('warns on a single option', () => {
+    expect(finding('/^ads/script').severity).toBe('warning');
+  });
+
+  it.each(['script,script', 'script,~script', 'Script,SCRIPT', 'match-case,~match-case', '~match-case,match-case'])('warns when %s has one distinct name', options => {
+    expect(finding(`/^ads/${options}`).severity).toBe('warning');
+  });
+
+  it('warns when the regex does not compile', () => {
+    expect(finding('/^ads(/script,image').severity).toBe('warning');
+  });
+
+  it('keeps "@@" in the suggestion and offsets the range', () => {
+    const result = finding('/^ads/script,image', true, 2);
+    expect(result).toMatchObject({ severity: 'error', startCol: 7, endCol: 14 });
+    expect(result.message).toContain('"@@/^ads/$script,image"');
+  });
+
+  it('skips a line with two eligible boundaries', () => {
+    expect(findings('/^ads/csp=script/image')).toEqual([]);
+  });
+
+  it('does not split at a "$" inside an option value', () => {
+    expect(findings('/^ads/script,csp=x$image')).toEqual([]);
+  });
+
+  it.each([
+    String.raw`/\.example\.com\/ads/script,third-party`,
+    '/assets/script',
+    '/images/image',
+    '/scripts/match-case',
+    '/^ads/',
+    '/^ads/$script,third-party',
+    '/^ads/scripts',
+    '/^ads/script,',
+  ])('stays quiet on %s', body => {
+    expect(findings(body)).toEqual([]);
+  });
+
+  it('leaves the caret check to its own finding', () => {
+    expect(validateNetworkRule('||host.com^script,image', false, 0).map(r => r.message)).toEqual([
+      expect.stringContaining('looks like a filter option'),
+    ]);
   });
 });
 

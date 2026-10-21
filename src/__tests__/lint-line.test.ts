@@ -362,3 +362,41 @@ describe('lintRawLine — mutation sweep', () => {
     for (const line of ALLOWED.keys()) expect(mutations.some(m => m.line === line)).toBe(true);
   });
 });
+
+describe('lintRawLine — missing "$" after a regex', () => {
+  const raw = (line: string) => lintRawLine(line, 0);
+
+  it('replaces the whitespace safety net', () => {
+    expect(raw("/^ads/script,csp=default-src 'none'").map(r => r.message)).toEqual([
+      expect.stringContaining('Likely missing "$"'),
+    ]);
+  });
+
+  it('puts the finding at the raw column of an indented line', () => {
+    expect(raw('  /^ads/script,image')).toEqual([
+      expect.objectContaining({ severity: 'error', startCol: 7, endCol: 14 }),
+    ]);
+  });
+
+  it('reports trailing whitespace once', () => {
+    expect(raw('/^ads/script,image  ').map(r => r.message)).toEqual([
+      expect.stringContaining('Likely missing "$"'),
+      'Trailing whitespace',
+    ]);
+  });
+});
+
+describe('lintRawLine — regex recovery drops literal-pattern suggestions', () => {
+  const raw = (line: string) => lintRawLine(line, 0).map(r => r.message);
+
+  it.each(['/^ads[^^]/script,image', '/^ads/script,csp=x^image'])('reports only the missing "$" on %s', line => {
+    expect(raw(line)).toEqual([expect.stringContaining('Likely missing "$"')]);
+  });
+
+  it.each([
+    ['/^ads^script', 'looks like a filter option'],
+    ['||example.com^^$script', 'Doubled separator'],
+  ])('keeps the original-pattern finding on %s', (line, message) => {
+    expect(raw(line)).toEqual([expect.stringContaining(message)]);
+  });
+});
