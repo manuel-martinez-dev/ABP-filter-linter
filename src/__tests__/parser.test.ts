@@ -129,3 +129,17 @@ describe('parseLine — snippet exceptions (#@$#)', () => {
     expect(parseLine('example.com#@$#', 0)).toMatchObject({ type: 'snippet-exception', body: '' });
   });
 });
+
+describe('parseLine — ABP-faithful fallback for damaged content filters', () => {
+  it('reads a pipe in the domain list as a network filter', () => {
+    expect(parseLine('example.com|example.org#$#x', 0).type).toBe('network');
+  });
+
+  it('reads "##$" as a cosmetic filter', () => {
+    expect(parseLine('example.com##$x', 0).type).toBe('cosmetic');
+  });
+
+  it('starts a network body at its raw column', () => {
+    expect(parseLine('  ||example.com^', 0).bodyOffset).toBe(2);
+  });
+});

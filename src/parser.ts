@@ -76,7 +76,7 @@ export function parseLine(raw: string, lineIndex: number): ParsedLine {
     separator: '',
     raw,
     lineIndex,
-    bodyOffset: 0,
+    bodyOffset: raw.indexOf(trimmed),
   };
 }
 
