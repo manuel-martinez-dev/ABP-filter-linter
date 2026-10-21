@@ -1,7 +1,7 @@
 import modifierData from '../data/modifiers.json';
 import type { LintResult } from '../types';
 
-const VALID = new Set(modifierData.valid);
+export const VALID_MODIFIERS = new Set(modifierData.valid);
 const DEPRECATED = new Set(modifierData.deprecated ?? []);
 const VALUE_REQUIRED = new Set(modifierData.valueRequired);
 const VALUE_OPTIONAL_ON_EXCEPTION = new Set(modifierData.valueOptionalOnException);
@@ -17,6 +17,9 @@ const INCOMPATIBLE = modifierData.incompatible as Record<string, string[]>;
 const INVALID_CSP_RE = /(;|^) ?(base-uri|referrer|report-to|report-uri|upgrade-insecure-requests)\b/i;
 const INVALID_HEADER_NAME_RE = /[^!#$%&'*+\-.^_`|~A-Za-z0-9]/;
 const INVALID_HEADER_VALUE_RE = /[^\x20-\x7E]/;
+export const PATTERN_TOO_SHORT = 'Generic pattern too short';
+export const DOUBLED_SEPARATOR = 'Doubled separator "^^"';
+export const MISSING_OPTION_SEPARATOR = 'looks like a filter option but has no "$"';
 const DOMAIN_ENTRY_RE = /^[\w-]+(\.[\w-]+)*$/;
 
 // ABP ignores "~" on these options (stripped before its option switch), so values are still required/validated
@@ -63,7 +66,7 @@ function checkPatternSpecificity(pattern: string, bodyOffset: number, results: L
     : pattern.startsWith('|') ? pattern.slice(1) : pattern;
   if (stripped.length >= 4 || stripped.includes('*')) return;
   results.push({
-    message: 'Generic pattern too short — needs $domain= or $sitekey=, at least 4 characters, or a "*" wildcard',
+    message: `${PATTERN_TOO_SHORT} — needs $domain= or $sitekey=, at least 4 characters, or a "*" wildcard`,
     severity: 'error',
     startCol: bodyOffset,
     endCol: bodyOffset + Math.max(pattern.length, 1),
@@ -76,7 +79,7 @@ function checkDoubledSeparator(pattern: string, bodyOffset: number, results: Lin
   const idx = pattern.indexOf('^^');
   if (idx === -1) return;
   results.push({
-    message: 'Doubled separator "^^" — likely a typo; did you mean "^"?',
+    message: `${DOUBLED_SEPARATOR} — likely a typo; did you mean "^"?`,
     severity: 'warning',
     startCol: bodyOffset + idx,
     endCol: bodyOffset + idx + 2,
@@ -195,13 +198,13 @@ function checkMissingOptionSeparator(
   const names = m[1]
     .split(',')
     .map(s => s.trim().replace(/^~/, '').split('=')[0].toLowerCase());
-  if (!names.every(n => VALID.has(n))) return;
+  if (!names.every(n => VALID_MODIFIERS.has(n))) return;
   const caretIdx = body.length - m[0].length;
   // parser strips "@@", so put it back or the suggestion turns an exception into a blocking rule
   const prefix = isException ? '@@' : '';
   const options = m[1].replace(/,[ \t]+/g, ',');
   results.push({
-    message: `"${m[1]}" looks like a filter option but has no "$" — did you mean `
+    message: `"${m[1]}" ${MISSING_OPTION_SEPARATOR} — did you mean `
       + `"${prefix}${body.slice(0, caretIdx + 1)}$${options}"? `
       + `As written, "${m[1]}" is matched as literal URL text.`,
     severity: 'error',
@@ -260,7 +263,7 @@ export function validateNetworkRule(
     const modEnd = modStart + trimmedMod.length;
     modRunningOffset += mod.length + 1; // +1 for the comma
 
-    if (!VALID.has(key)) {
+    if (!VALID_MODIFIERS.has(key)) {
       if (/^~?[\w-]+(\.[\w-]+)+$/.test(trimmedMod)) {
         domainLikeUnknowns.push({ key: trimmedMod, start: modStart, end: modEnd });
       } else {

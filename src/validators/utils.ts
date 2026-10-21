@@ -8,6 +8,18 @@ export function isRestrictedByDomain(domains: string[]): boolean {
     (/^.[^.]*\../.test(d) || d === 'localhost'));
 }
 
+export const DOMAIN_PATTERN = String.raw`~?[a-zA-Z0-9*-]+(?:\.[a-zA-Z0-9*-]+)+`;
+const DOMAIN_RE = new RegExp(`^${DOMAIN_PATTERN}$`);
+
+export function isDomainLike(entry: string): boolean {
+  return DOMAIN_RE.test(entry);
+}
+
+export function abbreviateDomains(list: string[]): string {
+  if (list.length <= 3) return list.join(',');
+  return `${list[0]},…,${list[list.length - 1]} (${list.length} domains)`;
+}
+
 export function domainScope(domains: string[]): 'global' | 'exclusion-only' | 'scoped' {
   if (domains.length === 0) return 'global';
   return domains.every(d => d.startsWith('~')) ? 'exclusion-only' : 'scoped';

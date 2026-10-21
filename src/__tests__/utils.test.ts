@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRestrictedByDomain, domainScope } from '../validators/utils';
+import { isRestrictedByDomain, domainScope, isDomainLike, abbreviateDomains } from '../validators/utils';
 
 describe('domainScope', () => {
   it.each([
@@ -52,5 +52,25 @@ describe('isRestrictedByDomain', () => {
 
   it('is false when only negated entries have dots', () => {
     expect(isRestrictedByDomain(['~a.com', 'foo'])).toBe(false);
+  });
+});
+
+describe('isDomainLike', () => {
+  it.each(['example.com', '~example.com', 'sub.example.org', 'example.*', 'my-site.example.net'])('accepts %s', d => {
+    expect(isDomainLike(d)).toBe(true);
+  });
+
+  it.each(['', 'example', 'example.com/', 'example..com', '.example.com', 'example.com|example.org'])('rejects %s', d => {
+    expect(isDomainLike(d)).toBe(false);
+  });
+});
+
+describe('abbreviateDomains', () => {
+  it('keeps up to three domains', () => {
+    expect(abbreviateDomains(['example.com', 'example.org', 'example.net'])).toBe('example.com,example.org,example.net');
+  });
+
+  it('abbreviates longer lists', () => {
+    expect(abbreviateDomains(['a.example.com', 'b.example.com', 'c.example.com', 'd.example.com'])).toBe('a.example.com,…,d.example.com (4 domains)');
   });
 });

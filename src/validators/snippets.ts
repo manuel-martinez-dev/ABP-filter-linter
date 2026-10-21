@@ -77,15 +77,21 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n];
 }
 
+export const SNIPPET_NAMES: readonly string[] = Object.keys(SNIPPETS);
+export const SNIPPET_NAME_SET: ReadonlySet<string> = new Set(SNIPPET_NAMES);
+
 function findClosest(name: string): string | null {
-  const candidates = Object.keys(SNIPPETS);
-  let best: string | null = null;
-  let bestDist = Infinity;
-  for (const c of candidates) {
-    const d = levenshtein(name, c);
-    if (d < bestDist) { bestDist = d; best = c; }
+  const closest = closestSnippet(name);
+  return closest && closest.distance <= 3 ? closest.name : null;
+}
+
+export function closestSnippet(name: string): { name: string; distance: number } | null {
+  let best: { name: string; distance: number } | null = null;
+  for (const candidate of SNIPPET_NAMES) {
+    const distance = levenshtein(name, candidate);
+    if (!best || distance < best.distance) best = { name: candidate, distance };
   }
-  return bestDist <= 3 ? best : null;
+  return best;
 }
 
 interface ParsedArgDetail {
