@@ -10,10 +10,10 @@ Search for **ABP Filter Linter** in the VS Code Extensions panel, or use Quick O
 ext install manuel-martinez-dev.abp-filter-linter
 ```
 
-Alternatively, download `abp-filter-linter-0.16.3.vsix` from the repository and install manually:
+Alternatively, download `abp-filter-linter-0.17.0.vsix` from the repository and install manually:
 
 ```bash
-code --install-extension abp-filter-linter-0.16.3.vsix
+code --install-extension abp-filter-linter-0.17.0.vsix
 ```
 
 ## Features
@@ -27,6 +27,7 @@ code --install-extension abp-filter-linter-0.16.3.vsix
 - CSS selector and ABP pseudo-class validation for `#?#` rules
 - Copy-paste mangle detection: snippet calls pasted inside another call's arguments, and quotes opening or closing mid-argument
 - Snippet exception (`#@$#`) validation: domain lists, command names and arguments, with a warning when an exception applies on every site
+- Damaged content filter detection: broken or spaced-out separators (`#$#`, `##`, `#?#`, ...) that silently turn a snippet or hiding filter into a blocking filter, with a suggested repair
 - Duplicate filter detection, including identical snippet calls repeated within one filter
 - Only activates on `.txt` files
 
