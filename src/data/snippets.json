@@ -353,7 +353,12 @@
         },
         {
           "name": "mode",
-          "required": false
+          "required": false,
+          "enum": [
+            "replace",
+            "append",
+            "remove"
+          ]
         }
       ]
     },
@@ -407,7 +412,12 @@
         },
         {
           "name": "mode",
-          "required": false
+          "required": false,
+          "enum": [
+            "replace",
+            "append",
+            "remove"
+          ]
         }
       ]
     },

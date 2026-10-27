@@ -400,3 +400,19 @@ describe('lintRawLine — regex recovery drops literal-pattern suggestions', () 
     expect(raw(line)).toEqual([expect.stringContaining(message)]);
   });
 });
+
+describe('lintLine — replace response mode argument', () => {
+  const modeFindings = (line: string) => lint(line).filter(r => r.message.includes('"mode"') || r.message.includes('accepts at most'));
+
+  it.each(['replace-fetch-response', 'replace-xhr-response'])('accepts every mode for %s', snippet => {
+    for (const mode of ['replace', 'append', 'remove']) {
+      expect(modeFindings(`example.com#$#${snippet} jsonpath($.ad) 0 /ads/ ${mode}`)).toEqual([]);
+    }
+  });
+
+  it.each(['replace-fetch-response', 'replace-xhr-response'])('rejects an unknown mode for %s', snippet => {
+    expect(errors(`example.com#$#${snippet} jsonpath($.ad) 0 /ads/ delete`)).toEqual([
+      expect.objectContaining({ message: 'Invalid value "delete" for "mode". Expected one of: replace, append, remove' }),
+    ]);
+  });
+});
