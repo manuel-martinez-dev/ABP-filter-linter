@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import ts from 'typescript';
 import {
   parseUpstreamGraph, buildNameMap, parseSnippetArgs, compareArgs, formatDriftReport,
-  toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
+  isPureAppend, formatAppendReport, toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
 } from '../snippet-diff.mjs';
 
 describe('parseUpstreamGraph', () => {
@@ -232,6 +232,58 @@ describe('compareArgs', () => {
     const upstream = [{ name: 'mode', required: false, enum: ['x'] }];
     const { enumDiffs } = compareArgs(recorded, upstream);
     expect(enumDiffs).toEqual([{ arg: 'mode', recorded: [], upstream: ['x'] }]);
+  });
+});
+
+describe('isPureAppend', () => {
+  const clean = { arityGrew: true, enumDiffs: [], regexDiffs: [] };
+  const recorded = [{ name: 'search', required: true }, { name: 'needle', required: false }];
+  const upstream = [{ name: 'search', required: true }, { name: 'needle', required: false }, { name: 'mode', required: false }];
+
+  it('accepts new trailing params after a name-matched prefix', () => {
+    expect(isPureAppend(recorded, upstream, clean)).toBe(true);
+  });
+
+  it('rejects a renamed prefix', () => {
+    const renamed = [{ name: 'pattern', required: true }, ...upstream.slice(1)];
+    expect(isPureAppend(recorded, renamed, clean)).toBe(false);
+  });
+
+  it('rejects variadic args on either side', () => {
+    const rest = { name: 'rest', required: false, variadic: true };
+    expect(isPureAppend([...recorded, rest], [...upstream, rest], clean)).toBe(false);
+    expect(isPureAppend(recorded, [...upstream, rest], clean)).toBe(false);
+  });
+
+  it('rejects enum or regex drift', () => {
+    expect(isPureAppend(recorded, upstream, { ...clean, enumDiffs: [{ arg: 'search' }] })).toBe(false);
+    expect(isPureAppend(recorded, upstream, { ...clean, regexDiffs: [{ arg: 'needle' }] })).toBe(false);
+  });
+
+  it('rejects when arity did not grow', () => {
+    expect(isPureAppend(recorded, recorded, { ...clean, arityGrew: false })).toBe(false);
+  });
+});
+
+describe('formatAppendReport', () => {
+  const entry = name => ({
+    name,
+    tail: [{ name: 'mode' }],
+    upstream: [{ name: 'search' }, { name: 'replacement' }, { name: 'needle' }, { name: 'mode' }],
+  });
+
+  it('lists added and upstream params per snippet', () => {
+    expect(formatAppendReport([entry('replace-fetch-response')])).toBe(
+      'ARGS_APPENDED\nreplace-fetch-response: added=[mode] upstream=[search, replacement, needle, mode]');
+    expect(formatAppendReport([entry('replace-fetch-response'), entry('replace-xhr-response')])).toBe(
+      'ARGS_APPENDED\n' +
+      'replace-fetch-response: added=[mode] upstream=[search, replacement, needle, mode]\n' +
+      'replace-xhr-response: added=[mode] upstream=[search, replacement, needle, mode]');
+  });
+
+  it('never emits the drift marker and is empty for no appends', () => {
+    expect(formatAppendReport([entry('a')])).not.toContain('DRIFT_DETECTED');
+    expect(formatAppendReport([])).toBe('');
   });
 });
 

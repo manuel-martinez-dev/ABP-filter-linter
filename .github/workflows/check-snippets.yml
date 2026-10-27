@@ -1,4 +1,4 @@
-name: Check for new snippets in @eyeo/snippets
+name: Check @eyeo/snippets for schema updates
 
 on:
   schedule:
@@ -35,15 +35,15 @@ jobs:
           echo "$delimiter" >> "$GITHUB_OUTPUT"
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
 
-      - name: Open PR if new snippets found
+      - name: Open PR if snippet schema updates found
         if: steps.check.outputs.exit_code == '2'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/new-snippets-detected
-          title: 'New snippets detected in @eyeo/snippets'
+          title: 'Snippet schema updates from @eyeo/snippets'
           body: |
-            The following snippet(s) were found in `@eyeo/snippets` and have been auto-added to `src/data/snippets.json` with detected argument definitions:
+            New snippets and/or new trailing arguments on existing snippets were found in `@eyeo/snippets` and have been auto-added to `src/data/snippets.json` with detected argument definitions:
 
             ```
             ${{ steps.check.outputs.output }}
@@ -54,10 +54,11 @@ jobs:
             - Verify `required` flags and fix any that are incorrect
             - Add any missing `enum` values (run `node .github/scripts/inspect-snippet.mjs <snippet-name>` locally to inspect the source)
             - Add special fields if needed (`category`, `noRace`, `max`, etc.)
+            - If the log above contains an `ARGS_APPENDED` section, those arguments were appended without review: verify `enum` values, `regex`, `required`, and `when` conditions via `inspect-snippet.mjs`
             - If the log above contains a `DRIFT_DETECTED` section, those entries need the same manual enum/field review as new snippets do
 
             Reference: [@eyeo/snippets source](https://gitlab.com/eyeo/anti-cv/snippets)
-          commit-message: 'chore: flag new snippets from @eyeo/snippets'
+          commit-message: 'chore: sync snippet schemas from @eyeo/snippets'
           labels: 'snippets,maintenance'
 
       - name: Fail if snippet schema drift was detected

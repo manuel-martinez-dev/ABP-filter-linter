@@ -413,6 +413,18 @@ export function formatDriftReport(drifted, unresolved) {
   return allLines.length > 0 ? 'DRIFT_DETECTED\n' + allLines.join('\n') : '';
 }
 
+export function isPureAppend(recorded, upstreamArgs, { arityGrew, enumDiffs, regexDiffs }) {
+  if (!arityGrew || enumDiffs.length > 0 || regexDiffs.length > 0) return false;
+  if (recorded.some(a => a.variadic) || upstreamArgs.some(a => a.variadic)) return false;
+  return recorded.every((a, i) => a.name === upstreamArgs[i].name);
+}
+
+export function formatAppendReport(appended) {
+  const lines = appended.map(a =>
+    `${a.name}: added=[${a.tail.map(t => t.name).join(', ')}] upstream=[${a.upstream.map(u => u.name).join(', ')}]`);
+  return lines.length > 0 ? 'ARGS_APPENDED\n' + lines.join('\n') : '';
+}
+
 // CI-only evidence — must never reach the shipped runtime schema.
 export function toRuntimeArgs(args) {
   return args.map(({ defaultExpr, ...rest }) => rest);

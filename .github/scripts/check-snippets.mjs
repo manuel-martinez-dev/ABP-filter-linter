@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import {
   SNIPPET_SOURCE_FILES, parseUpstreamGraph, buildNameMap, parseSnippetArgs, parseSnippetSince, compareArgs, formatDriftReport,
-  toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
+  isPureAppend, formatAppendReport, toRuntimeArgs, validateLedger, filterUnreviewedCandidates, checkLedgerStaleness, formatRequirednessReport,
 } from './lib/snippet-diff.mjs';
 
 async function main() {
@@ -47,6 +47,7 @@ async function main() {
   // Report unresolved mappings or signatures instead of silently skipping them.
   const unresolved = [];
   const drifted = [];
+  const appended = [];
   const requiredReview = [];
   for (const name of driftNames) {
     const { src, nameMap } = sources.get(name);
@@ -66,7 +67,9 @@ async function main() {
     if (newCandidates.length > 0) {
       requiredReview.push({ name, requiredDiffs: newCandidates });
     }
-    if (arityGrew || enumDiffs.length > 0 || regexDiffs.length > 0) {
+    if (isPureAppend(recorded, upstreamArgs, { arityGrew, enumDiffs, regexDiffs })) {
+      appended.push({ name, tail: upstreamArgs.slice(recorded.length), upstream: upstreamArgs });
+    } else if (arityGrew || enumDiffs.length > 0 || regexDiffs.length > 0) {
       drifted.push({
         name,
         recorded: recorded.map(a => a.name),
@@ -102,22 +105,29 @@ async function main() {
   const requirednessReport = formatRequirednessReport(requiredReview, staleLedgerEntries);
   if (requirednessReport) console.log(requirednessReport);
 
-  if (newSnippets.length > 0) {
+  if (newSnippets.length > 0 || appended.length > 0) {
     for (const name of newSnippets) {
       const { src, nameMap } = sources.get(name);
       const since = parseSnippetSince(name, src, nameMap);
       data.snippets[name] = { since, args: toRuntimeArgs(newSnippetArgs.get(name)) };
       if (since === 'unknown') console.log(`SINCE_REVIEW: ${name}: verify the Adblock Plus introduction version; package source has no usable @since documentation.`);
     }
+    for (const { name, tail } of appended) {
+      (data.snippets[name].args ??= []).push(...toRuntimeArgs(tail));
+    }
     writeFileSync(dataPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
-    console.log('NEW_SNIPPETS_FOUND');
-    console.log(newSnippets.join('\n'));
+    if (newSnippets.length > 0) {
+      console.log('NEW_SNIPPETS_FOUND');
+      console.log(newSnippets.join('\n'));
+    }
+    const appendReport = formatAppendReport(appended);
+    if (appendReport) console.log(appendReport);
     if (driftReport) console.log(driftReport);
-    process.exit(2); // new snippets found
+    process.exit(2); // new snippets or appended args written
   } else if (driftReport) {
     console.log(driftReport);
-    process.exit(3); // drift or unresolved snippets, nothing written
+    process.exit(3); // blocking drift, nothing written
   } else {
     console.log(requirednessReport ? 'No blocking snippet schema drift detected.' : 'All snippets are up to date.');
     process.exit(0);
