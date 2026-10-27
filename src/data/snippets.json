@@ -350,6 +350,15 @@
           "name": "needle",
           "required": false,
           "regex": true
+        },
+        {
+          "name": "mode",
+          "required": false,
+          "enum": [
+            "replace",
+            "append",
+            "remove"
+          ]
         }
       ]
     },
@@ -400,6 +409,15 @@
           "name": "needle",
           "required": false,
           "regex": true
+        },
+        {
+          "name": "mode",
+          "required": false,
+          "enum": [
+            "replace",
+            "append",
+            "remove"
+          ]
         }
       ]
     },
