@@ -350,6 +350,10 @@
           "name": "needle",
           "required": false,
           "regex": true
+        },
+        {
+          "name": "mode",
+          "required": false
         }
       ]
     },
@@ -400,6 +404,10 @@
           "name": "needle",
           "required": false,
           "regex": true
+        },
+        {
+          "name": "mode",
+          "required": false
         }
       ]
     },
