@@ -1151,6 +1151,27 @@
           ]
         }
       ]
+    },
+    "tmp-empty-gam-response": {
+      "since": "unknown",
+      "args": [
+        {
+          "name": "exclude",
+          "required": false
+        },
+        {
+          "name": "frames",
+          "required": false
+        },
+        {
+          "name": "emptyValue",
+          "required": false
+        },
+        {
+          "name": "hitEvents",
+          "required": false
+        }
+      ]
     }
   },
   "deprecated": {
