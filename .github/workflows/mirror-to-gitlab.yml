@@ -24,4 +24,5 @@ jobs:
       - name: Push to GitLab
         run: |
           git remote add gitlab git@gitlab.com:Aslatiel/ABP-filter-linter.git
-          git push gitlab master --tags
+          git push gitlab master
+          git push gitlab --tags --force # GitHub is source of truth; overwrite moved tags
