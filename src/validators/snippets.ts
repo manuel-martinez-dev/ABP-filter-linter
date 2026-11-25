@@ -10,6 +10,7 @@ interface ArgSchema {
   enum?: string[];
   allowsNumericLiteral?: boolean;
   numeric?: boolean;
+  pattern?: string;
   regex?: boolean | 'comma-separated' | 'space-separated' | 'unflagged';
   regexPrefix?: string;
   when?: { arg: number; equals: string; required?: boolean };
@@ -413,6 +414,17 @@ export function validateSnippetCall(
     });
   }
 
+  // Read only by the BAS Chromium snippet bundle, ignored by the extension
+  if (schema.category === 'chromium-pseudo') {
+    results.push({
+      message: `"${name}" is a Chromium partner pseudo-filter with no effect in the Adblock Plus extension`
+        + (name === 'use-debug' ? ' (debug switch, should not be in the live list)' : ''),
+      severity: 'warning',
+      startCol: absStart,
+      endCol: absEnd,
+    });
+  }
+
   const requiredArgs = schema.args.filter(a => a.required);
 
   // Missing required args
@@ -478,6 +490,16 @@ export function validateSnippetCall(
           endCol: argEnd,
         });
       }
+    }
+
+    // Source-enforced format; non-empty values that fail it are silently ignored
+    if (argSchema.pattern && argVal !== '' && !new RegExp(argSchema.pattern).test(argVal)) {
+      results.push({
+        message: `"${argSchema.name}" of "${name}" must match ${argSchema.pattern}, got "${argVal}" — the snippet ignores it`,
+        severity: 'error',
+        startCol: argStart,
+        endCol: argEnd,
+      });
     }
 
     // Numeric-only args — the snippet source enforces /^\d+$/ and silently no-ops otherwise
@@ -827,7 +849,8 @@ export function validateSnippetChain(calls: SnippetCall[], bodyOffset: number): 
         (schema.category === 'conditional-hiding' && !schema.noRace) ||
         schema.race ||
         call.name === 'skip-video' ||
-        schema.category === 'debugging';
+        schema.category === 'debugging' ||
+        schema.category === 'chromium-pseudo'; // presence flag only, never raced
 
       if (!supported) {
         const abs = bodyOffset + call.nameOffset;

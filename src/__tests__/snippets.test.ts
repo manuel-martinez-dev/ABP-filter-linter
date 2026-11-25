@@ -3,6 +3,7 @@ import snippetData from '../data/snippets.json';
 import modifierData from '../data/modifiers.json';
 import { splitSnippetChain, validateSnippetCall, validateSnippetChain, validateSnippetBody, detectDuplicateCalls, detectUnquotedRegexBreaks, detectLostRegexEscapes, isPassiveSnippet, snippetChainRequiresDomain } from '../validators/snippets';
 import { detectMissingSnippetSeparator, detectMalformedSnippetSeparator } from '../validators/damaged-content';
+import { lintRawLine } from '../validators/lint-line';
 
 describe('snippet regex syntax', () => {
   const run = (body: string, offset = 0) => splitSnippetChain(body)
@@ -1283,5 +1284,83 @@ describe('snippet and modifier names', () => {
   it('never overlap', () => {
     const modifiers = new Set<string>(modifierData.valid);
     expect(Object.keys(snippetData.snippets).filter(n => modifiers.has(n))).toEqual([]);
+  });
+});
+
+describe('Chromium pseudo-filters', () => {
+  const run = (body: string) => splitSnippetChain(body).flatMap(call => validateSnippetCall(call, 0));
+
+  it.each(['use-blob', 'use-debug'])('%s alone gives one Chromium warning and no error', name => {
+    const results = run(name);
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('warning');
+    expect(results[0].message).toContain('Chromium partner pseudo-filter');
+  });
+
+  it('marks use-debug as a debug switch', () => {
+    expect(run('use-debug')[0].message).toContain('debug switch');
+    expect(run('use-blob')[0].message).not.toContain('debug switch');
+  });
+
+  it('warns when use-blob gets an argument', () => {
+    const messages = run('use-blob foo').map(r => r.message);
+    expect(messages).toHaveLength(2);
+    expect(messages.some(m => m.includes('accepts at most 0 argument(s) but got 1'))).toBe(true);
+  });
+
+  it('accepts use-blob chained after a snippet', () => {
+    expect(run('json-prune ads; use-blob').filter(r => r.severity === 'error')).toEqual([]);
+  });
+
+  it('is allowed inside a race block', () => {
+    const calls = splitSnippetChain('race start; hide-if-contains ad div; use-blob; race stop');
+    expect(validateSnippetChain(calls, 0).filter(r => r.message.includes('race block'))).toEqual([]);
+  });
+
+  it('requires a domain on the full filter line', () => {
+    expect(lintRawLine('example.com#$#use-blob', 0).filter(r => r.severity === 'error')).toEqual([]);
+    const global = lintRawLine('#$#use-blob', 0).filter(r => r.severity === 'error');
+    expect(global).toHaveLength(1);
+    expect(global[0].message).toContain('must have a non-negated domain');
+  });
+});
+
+describe('tmp-empty-gam-response arguments', () => {
+  const run = (args: string) => validateSnippetCall(splitSnippetChain(`tmp-empty-gam-response ${args}`.trim())[0], 0);
+
+  it.each(['', "'' false", "'' '' 'AOrYGsk-value'", "'' true '' false", "'/upapi=true|iu_parts=1234/'"])(
+    'accepts %s', args => {
+      expect(run(args)).toEqual([]);
+    }
+  );
+
+  it('rejects a frames value other than true/false', () => {
+    const results = run("'' no");
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('Invalid value "no" for "frames"');
+  });
+
+  it('rejects a hitEvents value other than true/false', () => {
+    expect(run("'' true '' off")[0].message).toContain('Invalid value "off" for "hitEvents"');
+  });
+
+  it('warns about a malformed exclude regex', () => {
+    expect(run("'/[/'").some(r => r.message.includes('Malformed regex in "exclude"'))).toBe(true);
+  });
+
+  it('rejects an emptyValue the snippet would ignore', () => {
+    const results = run("'' true 'bad value!'");
+    expect(results).toHaveLength(1);
+    expect(results[0].severity).toBe('error');
+    expect(results[0].message).toContain('"emptyValue" of "tmp-empty-gam-response" must match');
+  });
+
+  it('warns about a fifth argument', () => {
+    expect(run("'' true '' true extra").some(r => r.message.includes('accepts at most 4 argument(s)'))).toBe(true);
+  });
+
+  it('records the ABP version that shipped it', () => {
+    expect(snippetData.snippets['tmp-empty-gam-response'].since).toBe('4.53.0');
   });
 });

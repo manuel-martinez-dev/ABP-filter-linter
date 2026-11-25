@@ -1153,25 +1153,47 @@
       ]
     },
     "tmp-empty-gam-response": {
-      "since": "unknown",
+      "since": "4.53.0",
       "args": [
         {
           "name": "exclude",
-          "required": false
+          "required": false,
+          "regex": true
         },
         {
           "name": "frames",
-          "required": false
+          "required": false,
+          "enum": [
+            "true",
+            "false",
+            ""
+          ]
         },
         {
           "name": "emptyValue",
-          "required": false
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]{1,512}$"
         },
         {
           "name": "hitEvents",
-          "required": false
+          "required": false,
+          "enum": [
+            "true",
+            "false",
+            ""
+          ]
         }
       ]
+    },
+    "use-blob": {
+      "since": "4.53.0",
+      "category": "chromium-pseudo",
+      "args": []
+    },
+    "use-debug": {
+      "since": "4.53.0",
+      "category": "chromium-pseudo",
+      "args": []
     }
   },
   "deprecated": {
