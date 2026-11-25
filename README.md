@@ -10,10 +10,10 @@ Search for **ABP Filter Linter** in the VS Code Extensions panel, or use Quick O
 ext install manuel-martinez-dev.abp-filter-linter
 ```
 
-Alternatively, download `abp-filter-linter-0.17.1.vsix` from the repository and install manually:
+Alternatively, download `abp-filter-linter-0.17.2.vsix` from the repository and install manually:
 
 ```bash
-code --install-extension abp-filter-linter-0.17.1.vsix
+code --install-extension abp-filter-linter-0.17.2.vsix
 ```
 
 ## Features
@@ -21,7 +21,8 @@ code --install-extension abp-filter-linter-0.17.1.vsix
 - Inline squiggles for invalid snippet/filter syntax
 - Full line background highlight (red for errors, yellow for warnings)
 - Typo detection with suggestions for snippet names
-- Argument count and enum validation for all snippets
+- Argument count, enum and format validation for all snippets
+- Chromium partner pseudo-filters (`use-blob`, `use-debug`) recognised, with a warning that they have no effect in the Adblock Plus extension
 - Network modifier compatibility checks
 - CSS selector validation for `##` rules
 - CSS selector and ABP pseudo-class validation for `#?#` rules
